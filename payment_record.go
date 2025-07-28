@@ -14,21 +14,23 @@ import (
 )
 
 type PayOrderService struct {
-	config Config
+	config     Config
+	repository repository.PayOrderRepository
 }
 
-func NewPayOrderService(config Config) PayOrderService {
+func NewPayOrderService(config Config, repository repository.PayOrderRepository) PayOrderService {
 	return PayOrderService{
-		config: config,
+		config:     config,
+		repository: repository,
 	}
 
 }
 
 type PayOrderCreateIn struct {
 	OrderId     string `json:"orderId"`
-	PayAgent    string `json:"payingAgent"` // 支付机构 weixin:微信 alipay:支付宝
-	OrderAmount int    `json:"orderPrice"`  // 订单金额，单位分
-	PayAmount   int    `json:"payAmount"`   // 实际支付金额，单位分
+	PayAgent    string `json:"payAgent"`   // 支付机构 weixin:微信 alipay:支付宝
+	OrderAmount int    `json:"orderPrice"` // 订单金额，单位分
+	PayAmount   int    `json:"payAmount"`  // 实际支付金额，单位分
 	PayParam    string `json:"payParam"`
 	UserId      string `json:"userId"`
 	ClientIp    string `json:"clientIp"`
@@ -111,7 +113,6 @@ func (s PayOrderService) Create(in PayOrderCreateIn) (out *PayOrder, err error) 
 	if err != nil {
 		return nil, err
 	}
-	payOrderService := repository.NewPayOrderRepository()
 	payId := PayNOGenerator()
 	createdAt := time.Now().Format(time.DateTime)
 	payOrderIn := repository.PayOrderCreateIn{
@@ -126,7 +127,7 @@ func (s PayOrderService) Create(in PayOrderCreateIn) (out *PayOrder, err error) 
 		PayParam:    in.PayParam,
 		CreatedAt:   createdAt,
 	}
-	err = payOrderService.Create(payOrderIn)
+	err = s.repository.Create(payOrderIn)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +151,7 @@ func (req *PayOrderCreateIn) Validate() error {
 
 	payAgents := []string{PayingAgent_Alipay, PayingAgent_Wechat}
 	// 验证type
-	if slices.Contains(payAgents, req.PayAgent) {
+	if !slices.Contains(payAgents, req.PayAgent) {
 		err := errors.Errorf("请传入支付方式=>%s", strings.Join(payAgents, ","))
 		return err
 	}
@@ -182,7 +183,7 @@ func PayNOGenerator() string {
 
 // GetOrderPayInfo 获取订单支付信息
 func (s PayOrderService) GetOrderPayInfo(orderId string) (payOrders PayOrders, err error) {
-	r := repository.NewPayOrderRepository()
+	r := s.repository
 	models, err := r.GetByOrderId(orderId)
 	if err != nil {
 		return nil, err
@@ -204,7 +205,7 @@ func (s PayOrderService) GetOrderPayInfo(orderId string) (payOrders PayOrders, e
 
 // Pay 支付订单
 func (s PayOrderService) Pay(payId string) (err error) {
-	r := repository.NewPayOrderRepository()
+	r := s.repository
 	model, err := r.GetByPayIdMust(payId)
 	if err != nil {
 		return err
@@ -237,7 +238,7 @@ func (s PayOrderService) CloseByOrderId(orderId string) (err error) {
 		return err
 	}
 
-	r := repository.NewPayOrderRepository()
+	r := s.repository
 	closeBatchIn := make([]repository.CloseIn, 0)
 	for _, v := range records {
 		closeIn := repository.CloseIn{PayId: v.PayId, NewState: string(PayOrderModel_state_closed), OldState: v.State.String()}
@@ -252,7 +253,7 @@ func (s PayOrderService) CloseByOrderId(orderId string) (err error) {
 }
 
 func (s PayOrderService) GetByPayId(payId string) (payOrder *PayOrder, err error) {
-	r := repository.NewPayOrderRepository()
+	r := s.repository
 	model, err := r.GetByPayIdMust(payId)
 	if err != nil {
 		return nil, err
@@ -282,7 +283,7 @@ func (s PayOrderService) CloseByPayId(payId string) (err error) {
 		return err
 	}
 
-	r := repository.NewPayOrderRepository()
+	r := s.repository
 	err = r.CloseByPayId(record.PayId, PayOrderModel_state_paid.String(), record.State.String())
 	if err != nil {
 		return err
@@ -300,7 +301,7 @@ func (s PayOrderService) ExpiredByPayId(payId string) (err error) {
 		return err
 	}
 
-	r := repository.NewPayOrderRepository()
+	r := s.repository
 	err = r.CloseByPayId(record.PayId, PayOrderModel_state_expired.String(), record.State.String())
 	if err != nil {
 		return err
@@ -319,7 +320,7 @@ func (s PayOrderService) Failed(payId string) (err error) {
 		return err
 	}
 
-	r := repository.NewPayOrderRepository()
+	r := s.repository
 	err = r.Failed(record.PayId, PayOrderModel_state_failed.String(), record.State.String())
 	if err != nil {
 		return err

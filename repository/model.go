@@ -77,6 +77,7 @@ var table_pay_order = sqlbuilder.NewTableConfig("pay_record").AddColumns(
 	sqlbuilder.NewColumn("Fnotify_url", sqlbuilder.GetField(NewNotifyUrl)),
 	sqlbuilder.NewColumn("Fpay_param", sqlbuilder.GetField(NewPayParam)),
 	sqlbuilder.NewColumn("Fpay_at", sqlbuilder.GetField(NewPayAt)),
+	sqlbuilder.NewColumn("Fexpire", sqlbuilder.GetField(NewExpire)),
 	sqlbuilder.NewColumn("Fclosed_at", sqlbuilder.GetField(NewClosedAt)),
 	sqlbuilder.NewColumn("Fcreated_at", sqlbuilder.GetField(NewCreatedAt)),
 ).AddIndexs(
@@ -103,9 +104,10 @@ type PayOrderRepository struct {
 	repository sqlbuilder.Repository[PayModelOrderModel]
 }
 
-func NewPayOrderRepository() PayOrderRepository {
+func NewPayOrderRepository(handler sqlbuilder.Handler) PayOrderRepository {
+	tableConfig := table_pay_order.WithHandler(handler)
 	return PayOrderRepository{
-		repository: sqlbuilder.NewRepository[PayModelOrderModel](table_pay_order),
+		repository: sqlbuilder.NewRepository[PayModelOrderModel](tableConfig),
 	}
 }
 
@@ -179,8 +181,11 @@ func (po PayOrderRepository) GetByPayId(payId string) (model PayModelOrderModel,
 
 func (po PayOrderRepository) GetByPayIdMust(payId string) (model PayModelOrderModel, err error) {
 	model, exists, err := po.GetByPayId(payId)
+	if err != nil {
+		return model, err
+	}
 	if !exists {
-		err = sqlbuilder.ERROR_NOT_FOUND
+		err = sqlbuilder.ErrNotFound
 		return model, err
 	}
 	return model, nil
