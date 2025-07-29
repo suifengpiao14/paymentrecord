@@ -1,8 +1,11 @@
 package repository
 
 import (
+	"errors"
+	"slices"
 	"time"
 
+	"github.com/spf13/cast"
 	"github.com/suifengpiao14/sqlbuilder"
 )
 
@@ -32,7 +35,7 @@ CREATE TABLE `t_payment_record` (
 ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8 COMMENT='支付记录';
 */
 
-type PayModelOrderModel struct {
+type PayOrderModel struct {
 	Id          int64  `gorm:"column:Fid" json:"id"`
 	PayId       string `gorm:"column:Fpay_id" json:"payId"`
 	OrderId     string `gorm:"column:Forder_id" json:"orderId"`
@@ -40,19 +43,35 @@ type PayModelOrderModel struct {
 	PayAmount   int    `gorm:"column:Fpay_amount" json:"payAmount"`
 	PayAgent    string `gorm:"column:Fpay_agent" json:"payAgent"`
 	State       string `gorm:"column:Fstate" json:"state"`
-	UserId      int64  `gorm:"column:Fuser_id" json:"userId"`
+	UserId      string `gorm:"column:Fuser_id" json:"userId"`
 	ClientIp    string `gorm:"column:Fclient_ip" json:"clientIp"`
 	PayUrl      string `gorm:"column:Fpay_url" json:"payUrl"`
 	Expire      int    `gorm:"column:Fexpire" json:"expire"`
 	ReturnUrl   string `gorm:"column:Freturn_url" json:"returnUrl"`
 	NotifyUrl   string `gorm:"column:Fnotify_url" json:"notifyUrl"`
+	Remark      string `gorm:"column:Fremark" json:"remark"` // 支付结果备注信息，如支付失败原因等
 	PayParam    string `gorm:"column:Fpay_param" json:"payParams"`
+	CreatedAt   string `gorm:"column:Fcreated_at" json:"createdAt"`
 	PayAt       string `gorm:"column:Fpay_at" json:"payAt"`
 	ClosedAt    string `gorm:"column:Fclosed_at" json:"closedAt"`
-	CreatedAt   string `gorm:"column:Fcreated_at" json:"createdAt"`
+	ExpiredAt   string `gorm:"column:Fexpired_at" json:"expiredAt"`
+	FailedAt    string `gorm:"column:Ffailed_at" json:"failedAt"`
 }
 
-type PayOrderModels []PayModelOrderModel
+func (m PayOrderModel) StateIsClosed() bool {
+	return m.State == PayOrderModel_state_closed.String()
+}
+func (m PayOrderModel) StateIsPaid() bool {
+	return m.State == PayOrderModel_state_paid.String()
+}
+func (m PayOrderModel) StateIsFailed() bool {
+	return m.State == PayOrderModel_state_failed.String()
+}
+func (m PayOrderModel) StateIsExpired() bool {
+	return m.State == PayOrderModel_state_expired.String()
+}
+
+type PayOrderModels []PayOrderModel
 
 func (ms PayOrderModels) TotalAmount() int {
 	var total = 0
@@ -62,11 +81,76 @@ func (ms PayOrderModels) TotalAmount() int {
 	return total
 }
 
+var EffectStates = []string{PayOrderModel_state_pending.String(), PayOrderModel_state_paid.String()}
+
+func (ms PayOrderModels) FilterByState(state ...string) (paidMs PayOrderModels) {
+	for _, m := range ms {
+		if slices.Contains(state, m.State) {
+			paidMs = append(paidMs, m)
+		}
+	}
+	return paidMs
+}
+
+func (ms PayOrderModels) FilterByStatePaid() (paidMs PayOrderModels) {
+	return ms.FilterByState(PayOrderModel_state_paid.String())
+}
+func (ms PayOrderModels) FilterByStateEffect() (paidMs PayOrderModels) {
+	return ms.FilterByState(EffectStates...)
+}
+
+func (ms PayOrderModels) First() (model *PayOrderModel, exists bool) {
+	for _, m := range ms {
+		return &m, true
+	}
+	return nil, false
+}
+
+func (ms PayOrderModels) GetOrderAmount() (orderAmount int) {
+	effectRecords := ms.FilterByStateEffect()
+	first, exists := effectRecords.First()
+	if !exists {
+		return 0
+	}
+	orderAmount = first.OrderAmount
+	return orderAmount
+}
+
+func (ms PayOrderModels) FilterByStatePending() (paidMs PayOrderModels) {
+	return ms.FilterByState(PayOrderModel_state_pending.String())
+}
+
+func (ms PayOrderModels) PaidMoney() (paidMoney int) {
+	if len(ms) == 0 {
+		return 0
+	}
+	firstOrderId := ms[0].OrderId
+	for _, order := range ms {
+		if order.OrderId != firstOrderId { // 确保只统计同一个支付单的金额
+			err := errors.New("PayOrders.PaidMoney 方法只能用于同一个订单的支付单")
+			panic(err)
+		}
+		if order.State == PayOrderModel_state_paid.String() {
+			paidMoney += cast.ToInt(order.PayAmount)
+		}
+	}
+	return paidMoney
+}
+
+func (ms PayOrderModels) IsOrderPayFinished() (payfinished bool) {
+	if len(ms) == 0 {
+		return true
+	}
+	orderAmount := ms.GetOrderAmount()
+	payfinished = orderAmount <= ms.PaidMoney() // 所有支付单支付金额总和大于等于订单金额即为支付完成
+	return payfinished
+}
+
 var table_pay_order = sqlbuilder.NewTableConfig("pay_record").AddColumns(
 	sqlbuilder.NewColumn("Fid", sqlbuilder.GetField(NewId)),
 	sqlbuilder.NewColumn("Fpay_id", sqlbuilder.GetField(NewPayId)),
 	sqlbuilder.NewColumn("Forder_id", sqlbuilder.GetField(NewOrderId)),
-	sqlbuilder.NewColumn("Ftotal_amount", sqlbuilder.GetField(NewTotalAmount)),
+	sqlbuilder.NewColumn("Forder_amount", sqlbuilder.GetField(NewOrderAmount)),
 	sqlbuilder.NewColumn("Fpay_amount", sqlbuilder.GetField(NewPayAmount)),
 	sqlbuilder.NewColumn("Fpay_agent", sqlbuilder.GetField(NewPayAgent)),
 	sqlbuilder.NewColumn("Fstate", sqlbuilder.GetField(NewState)),
@@ -76,55 +160,45 @@ var table_pay_order = sqlbuilder.NewTableConfig("pay_record").AddColumns(
 	sqlbuilder.NewColumn("Freturn_url", sqlbuilder.GetField(NewReturnUrl)),
 	sqlbuilder.NewColumn("Fnotify_url", sqlbuilder.GetField(NewNotifyUrl)),
 	sqlbuilder.NewColumn("Fpay_param", sqlbuilder.GetField(NewPayParam)),
-	sqlbuilder.NewColumn("Fpay_at", sqlbuilder.GetField(NewPayAt)),
+	sqlbuilder.NewColumn("Fremark", sqlbuilder.GetField(NewRemark)),
 	sqlbuilder.NewColumn("Fexpire", sqlbuilder.GetField(NewExpire)),
-	sqlbuilder.NewColumn("Fclosed_at", sqlbuilder.GetField(NewClosedAt)),
 	sqlbuilder.NewColumn("Fcreated_at", sqlbuilder.GetField(NewCreatedAt)),
+	sqlbuilder.NewColumn("Fpay_at", sqlbuilder.GetField(NewPayAt)),
+	sqlbuilder.NewColumn("Fclosed_at", sqlbuilder.GetField(NewClosedAt)),
+	sqlbuilder.NewColumn("Fexpired_at", sqlbuilder.GetField(NewExpiredAt)),
+	sqlbuilder.NewColumn("Ffailed_at", sqlbuilder.GetField(NewFailedAt)),
 ).AddIndexs(
 	sqlbuilder.Index{
 		IsPrimary: true,
 		ColumnNames: func(tableColumns sqlbuilder.ColumnConfigs) (columnNames []string) {
-			return []string{"Fid"}
+
+			return []string{tableColumns.GetByFieldNameMust(sqlbuilder.GetFieldName(NewId)).DbName}
 		},
 	},
 	sqlbuilder.Index{
 		Unique: true,
 		ColumnNames: func(tableColumns sqlbuilder.ColumnConfigs) (columnNames []string) {
-			return []string{"Fpay_id"}
+			return []string{tableColumns.GetByFieldNameMust(sqlbuilder.GetFieldName(NewPayId)).DbName}
 		},
 	},
 	sqlbuilder.Index{
 		ColumnNames: func(tableColumns sqlbuilder.ColumnConfigs) (columnNames []string) {
-			return []string{"order_id"}
+			return []string{tableColumns.GetByFieldNameMust(sqlbuilder.GetFieldName(NewOrderId)).DbName}
 		},
 	},
-)
+).WithComment("支付记录表")
 
 type PayOrderRepository struct {
-	repository sqlbuilder.Repository[PayModelOrderModel]
+	repository sqlbuilder.Repository[PayOrderModel]
 }
 
 func NewPayOrderRepository(handler sqlbuilder.Handler) PayOrderRepository {
 	tableConfig := table_pay_order.WithHandler(handler)
 	return PayOrderRepository{
-		repository: sqlbuilder.NewRepository[PayModelOrderModel](tableConfig),
+		repository: sqlbuilder.NewRepository[PayOrderModel](tableConfig),
 	}
 }
 
-/*
-PayId       string `gorm:"column:Fpay_id" json:"payId"`
-OrderId     int64  `gorm:"column:Forder_id" json:"orderId"`
-TotalAmount int    `gorm:"column:Ftotal_amount" json:"totalAmount"`
-PayAmount   int    `gorm:"column:Fpay_amount" json:"payAmount"`
-PayAgent    string `gorm:"column:Fpay_agent" json:"payAgent"`
-State       string `gorm:"column:Fstate" json:"state"`
-UserId      int64  `gorm:"column:Fuser_id" json:"userId"`
-ClientIp    string `gorm:"column:Fclient_ip" json:"clientIp"`
-PayUrl      string `gorm:"column:Fpay_url" json:"payUrl"`
-ReturnUrl   string `gorm:"column:Freturn_url" json:"returnUrl"`
-NotifyUrl   string `gorm:"column:Fnotify_url" json:"notifyUrl"`
-PayParam    string `gorm:"column:Fpay_param" json:"payParams"`
-*/
 type PayOrderCreateIn struct {
 	PayId       string `json:"payId"`
 	OrderId     string `json:"orderId"`
@@ -138,7 +212,6 @@ type PayOrderCreateIn struct {
 	ReturnUrl   string `json:"returnUrl"`
 	NotifyUrl   string `json:"notifyUrl"`
 	PayParam    string `json:"payParams"`
-	CreatedAt   string `json:"createdAt"`
 	Expire      int    `json:"expire"`
 }
 
@@ -146,7 +219,7 @@ func (in PayOrderCreateIn) Fields() sqlbuilder.Fields {
 	return sqlbuilder.Fields{
 		NewPayId(in.PayId).SetRequired(true),
 		NewOrderId(in.OrderId).SetRequired(true),
-		NewTotalAmount(in.OrderAmount).SetRequired(true),
+		NewOrderAmount(in.OrderAmount).SetRequired(true),
 		NewPayAmount(in.PayAmount).SetRequired(true),
 		NewPayAgent(in.PayAgent).SetRequired(true),
 		NewState(in.State).SetRequired(true),
@@ -168,7 +241,7 @@ func (po PayOrderRepository) Create(in PayOrderCreateIn) (err error) {
 	return nil
 }
 
-func (po PayOrderRepository) GetByPayId(payId string) (model PayModelOrderModel, exists bool, err error) {
+func (po PayOrderRepository) GetByPayId(payId string) (model PayOrderModel, exists bool, err error) {
 	fs := sqlbuilder.Fields{
 		NewPayId(payId).AppendWhereFn(sqlbuilder.ValueFnForward),
 	}
@@ -179,7 +252,7 @@ func (po PayOrderRepository) GetByPayId(payId string) (model PayModelOrderModel,
 	return model, exists, nil
 }
 
-func (po PayOrderRepository) GetByPayIdMust(payId string) (model PayModelOrderModel, err error) {
+func (po PayOrderRepository) GetByPayIdMust(payId string) (model PayOrderModel, err error) {
 	model, exists, err := po.GetByPayId(payId)
 	if err != nil {
 		return model, err
@@ -256,6 +329,19 @@ func (po PayOrderRepository) CloseByPayId(payId string, closeState string, oldSt
 	err = po.ChangeStatus(in)
 	return err
 }
+func (po PayOrderRepository) ExpireByPayId(payId string, expiredState string, oldState string, reason string) (err error) {
+	in := ChangeStatusIn{
+		PayId:    payId,
+		NewState: expiredState,
+		OldState: oldState,
+		ExtraFields: sqlbuilder.Fields{
+			NewRemark(reason),
+			NewExpiredAt(time.Now().Format(time.DateTime)),
+		},
+	}
+	err = po.ChangeStatus(in)
+	return err
+}
 
 type CloseIn = ChangeStatusIn
 
@@ -267,7 +353,7 @@ func (po PayOrderRepository) CloseBatch(closeInArr ...CloseIn) (err error) {
 		closeInArr[i].ExtraFields = extraFields
 	}
 
-	po.repository.Transaction(func(txRepository sqlbuilder.Repository[PayModelOrderModel]) (err error) {
+	err = po.repository.Transaction(func(txRepository sqlbuilder.Repository[PayOrderModel]) (err error) {
 		for _, closeIn := range closeInArr {
 			fs := closeIn.Fields()
 			err = txRepository.Update(fs)
@@ -278,12 +364,24 @@ func (po PayOrderRepository) CloseBatch(closeInArr ...CloseIn) (err error) {
 		return nil
 
 	})
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func (po PayOrderRepository) Failed(payId string, failedState string, oldState string) (err error) {
-	in := ChangeStatusIn{PayId: payId, NewState: failedState, OldState: oldState}
+func (po PayOrderRepository) Failed(payId string, failedState string, oldState string, reason string) (err error) {
+	in := ChangeStatusIn{
+		PayId:    payId,
+		NewState: failedState,
+		OldState: oldState,
+		ExtraFields: sqlbuilder.Fields{
+			NewFailedAt(time.Now().Format(time.DateTime)),
+			NewRemark(reason),
+		},
+	}
+
 	err = po.ChangeStatus(in)
 	return err
 }
