@@ -12,9 +12,9 @@ import (
 
 // userName string, password string, host string, port int, database string
 var mysqlDB = sqlbuilder.GormDBMakeMysql(sqlbuilder.DBConfig{
-	UserName:     "hjx",
-	Password:     "123456",
-	Host:         "129.204.136.31",
+	UserName:     "test",
+	Password:     "test",
+	Host:         "127.0.01",
 	Port:         3306,
 	DatabaseName: "test",
 }, nil)
