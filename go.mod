@@ -7,7 +7,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cast v1.6.0
 	github.com/stretchr/testify v1.10.0
-	github.com/suifengpiao14/commonlanguage v0.0.15
+	github.com/suifengpiao14/commonlanguage v0.0.17
 	github.com/suifengpiao14/sqlbuilder v0.1.572
 )
 
@@ -24,11 +24,10 @@ require (
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/redis/go-redis/v9 v9.7.0 // indirect
-	github.com/suifengpiao14/cache v0.0.8 // indirect
+	github.com/suifengpiao14/cache v0.0.10 // indirect
 	github.com/suifengpiao14/funcs v0.0.25 // indirect
 	golang.org/x/net v0.10.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/sys v0.16.0 // indirect
 	golang.org/x/text v0.16.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
