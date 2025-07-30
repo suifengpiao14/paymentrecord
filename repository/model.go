@@ -292,7 +292,7 @@ func (in ChangeStatusIn) Fields() sqlbuilder.Fields {
 			})
 		}),
 	}
-	fs.Add(in.ExtraFields...)
+	fs = fs.Add(in.ExtraFields...)
 	return fs
 }
 
