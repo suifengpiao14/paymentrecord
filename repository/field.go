@@ -116,8 +116,8 @@ func NewUserId(userId string) *sqlbuilder.Field {
 	return sqlbuilder.NewStringField(userId, "userId", "用户ID", 64)
 }
 
-func NewPayAt(payAt string) *sqlbuilder.Field {
-	f := commonlanguage.NewTime(payAt).SetName("payAt").SetTitle("支付时间")
+func NewPaidAt(paidAt string) *sqlbuilder.Field {
+	f := commonlanguage.NewTime(paidAt).SetName("paidAt").SetTitle("支付时间")
 	return f
 }
 
@@ -159,20 +159,20 @@ func NewRemark(remark string) *sqlbuilder.Field {
 	return sqlbuilder.NewStringField(remark, "remark", "支付备注(如失败原因)", 0)
 }
 
-func NewRecipientId(recipientId string) *sqlbuilder.Field {
-	return sqlbuilder.NewStringField(recipientId, "recipientId", "收款人ID", 64)
+func NewRecipientAccount(recipientAccount string) *sqlbuilder.Field {
+	return sqlbuilder.NewStringField(recipientAccount, "recipientAccount", "收款人账号", 64)
 }
 
 func NewRecipientName(recipientName string) *sqlbuilder.Field {
 	return sqlbuilder.NewStringField(recipientName, "recipientName", "收款人名称", 64)
 }
 
-func NewPayerId(payerId string) *sqlbuilder.Field {
-	return sqlbuilder.NewStringField(payerId, "payerId", "付款人ID", 64)
+func NewPaymentAccount(paymentAccount string) *sqlbuilder.Field {
+	return sqlbuilder.NewStringField(paymentAccount, "paymentAccount", "付款人账号", 64)
 }
 
-func NewPayerName(payerName string) *sqlbuilder.Field {
-	return sqlbuilder.NewStringField(payerName, "payerName", "付款人名称", 64)
+func NewPaymentName(paymentName string) *sqlbuilder.Field {
+	return sqlbuilder.NewStringField(paymentName, "paymentName", "付款人名称", 64)
 }
 
 var NewCreatedAt = commonlanguage.NewCreatedAt

@@ -25,7 +25,7 @@ func init() {
 
 var cfg = paymentrecord.Config{}
 var handler = sqlbuilder.NewGormHandler(mysqlDB)
-var repo = repository.NewPayOrderRepository(handler)
+var repo = repository.NewPayRecordRepository(handler)
 var payOrderService = paymentrecord.NewPayOrderService(repo)
 
 var payId = paymentrecord.PayIdGenerator()

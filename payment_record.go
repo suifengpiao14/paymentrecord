@@ -14,10 +14,10 @@ import (
 
 type PayOrderService struct {
 	//config     Config
-	repository repository.PayOrderRepository
+	repository repository.PayRecordRepository
 }
 
-func NewPayOrderService(repository repository.PayOrderRepository) PayOrderService {
+func NewPayOrderService(repository repository.PayRecordRepository) PayOrderService {
 	return PayOrderService{
 		//config:     config,
 		repository: repository,
@@ -113,7 +113,7 @@ func (s PayOrderService) Create(in PayOrderCreateIn) (out *PayOrder, err error) 
 	}
 
 	createdAt := time.Now().Format(time.DateTime)
-	payOrderIn := repository.PayOrderCreateIn{
+	payOrderIn := repository.PayRecordCreateIn{
 		PayId:            in.PayId,
 		OrderId:          in.OrderId,
 		OrderAmount:      in.OrderAmount,
