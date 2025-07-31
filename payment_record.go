@@ -13,27 +13,35 @@ import (
 )
 
 type PayOrderService struct {
-	config     Config
+	//config     Config
 	repository repository.PayOrderRepository
 }
 
-func NewPayOrderService(config Config, repository repository.PayOrderRepository) PayOrderService {
+func NewPayOrderService(repository repository.PayOrderRepository) PayOrderService {
 	return PayOrderService{
-		config:     config,
+		//config:     config,
 		repository: repository,
 	}
 
 }
 
 type PayOrderCreateIn struct {
-	PayId       string `json:"payId"`
-	OrderId     string `json:"orderId"`
-	PayAgent    string `json:"payAgent"`   // 支付机构 weixin:微信 alipay:支付宝
-	OrderAmount int    `json:"orderPrice"` // 订单金额，单位分
-	PayAmount   int    `json:"payAmount"`  // 实际支付金额，单位分
-	PayParam    string `json:"payParam"`
-	UserId      string `json:"userId"`
-	ClientIp    string `json:"clientIp"`
+	PayId            string `json:"payId"`
+	OrderId          string `json:"orderId"`
+	PayAgent         string `json:"payAgent"`   // 支付机构 weixin:微信 alipay:支付宝
+	OrderAmount      int    `json:"orderPrice"` // 订单金额，单位分
+	PayAmount        int    `json:"payAmount"`  // 实际支付金额，单位分
+	PayParam         string `json:"payParam"`
+	UserId           string `json:"userId"`
+	ClientIp         string `json:"clientIp"`
+	RecipientAccount string `json:"recipientAccount"`
+	RecipientName    string `json:"recipientName"`
+	PaymentAccount   string `json:"paymentAccount"`
+	PaymentName      string `json:"paymentName"`
+	PayUrl           string `json:"payUrl"`
+	NotifyUrl        string `json:"notifyUrl"`
+	ReturnUrl        string `json:"returnUrl"`
+	Remark           string `json:"remark"`
 }
 
 type PayOrder struct {
@@ -59,7 +67,6 @@ type Config struct {
 	Key       string `json:"key"`
 	NotifyUrl string `json:"notifyUrl"`
 	ReturnUrl string `json:"returnUrl"`
-	PayQf     int    `json:"payQf"`
 	PayUrl    string `json:"payUrl"`
 }
 
@@ -107,15 +114,24 @@ func (s PayOrderService) Create(in PayOrderCreateIn) (out *PayOrder, err error) 
 
 	createdAt := time.Now().Format(time.DateTime)
 	payOrderIn := repository.PayOrderCreateIn{
-		PayId:       in.PayId,
-		OrderId:     in.OrderId,
-		OrderAmount: in.OrderAmount,
-		PayAmount:   in.PayAmount,
-		PayAgent:    in.PayAgent,
-		State:       string(repository.PayOrderModel_state_pending),
-		UserId:      in.UserId,
-		ClientIp:    in.ClientIp,
-		PayParam:    in.PayParam,
+		PayId:            in.PayId,
+		OrderId:          in.OrderId,
+		OrderAmount:      in.OrderAmount,
+		PayAmount:        in.PayAmount,
+		PayAgent:         in.PayAgent,
+		State:            string(repository.PayOrderModel_state_pending),
+		UserId:           in.UserId,
+		ClientIp:         in.ClientIp,
+		PayParam:         in.PayParam,
+		PayUrl:           in.PayUrl,
+		Expire:           0,
+		ReturnUrl:        in.ReturnUrl,
+		NotifyUrl:        in.NotifyUrl,
+		Remark:           in.Remark,
+		RecipientAccount: in.RecipientAccount,
+		RecipientName:    in.RecipientName,
+		PaymentAccount:   in.PaymentAccount,
+		PaymentName:      in.PaymentName,
 	}
 	err = s.repository.Create(payOrderIn)
 	if err != nil {

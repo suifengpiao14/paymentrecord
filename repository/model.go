@@ -200,19 +200,24 @@ func NewPayOrderRepository(handler sqlbuilder.Handler) PayOrderRepository {
 }
 
 type PayOrderCreateIn struct {
-	PayId       string `json:"payId"`
-	OrderId     string `json:"orderId"`
-	OrderAmount int    `json:"totalAmount"`
-	PayAmount   int    `json:"payAmount"`
-	PayAgent    string `json:"payAgent"`
-	State       string `json:"state"`
-	UserId      string `json:"userId"`
-	ClientIp    string `json:"clientIp"`
-	PayUrl      string `json:"payUrl"`
-	ReturnUrl   string `json:"returnUrl"`
-	NotifyUrl   string `json:"notifyUrl"`
-	PayParam    string `json:"payParams"`
-	Expire      int    `json:"expire"`
+	PayId            string `json:"payId"`
+	OrderId          string `json:"orderId"`
+	OrderAmount      int    `json:"totalAmount"`
+	PayAmount        int    `json:"payAmount"`
+	PayAgent         string `json:"payAgent"`
+	State            string `json:"state"`
+	UserId           string `json:"userId"`
+	ClientIp         string `json:"clientIp"`
+	PayUrl           string `json:"payUrl"`
+	ReturnUrl        string `json:"returnUrl"`
+	NotifyUrl        string `json:"notifyUrl"`
+	PayParam         string `json:"payParams"`
+	Expire           int    `json:"expire"`
+	Remark           string `json:"remark"`
+	RecipientAccount string `json:"recipientAccount"`
+	RecipientName    string `json:"recipientName"`
+	PaymentAccount   string `json:"paymentAccount"`
+	PaymentName      string `json:"paymentName"`
 }
 
 func (in PayOrderCreateIn) Fields() sqlbuilder.Fields {
@@ -230,6 +235,7 @@ func (in PayOrderCreateIn) Fields() sqlbuilder.Fields {
 		NewNotifyUrl(in.NotifyUrl),
 		NewPayParam(in.PayParam),
 		NewExpire(in.Expire),
+		NewRemark(in.Remark),
 	}
 }
 

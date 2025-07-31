@@ -159,7 +159,24 @@ func NewRemark(remark string) *sqlbuilder.Field {
 	return sqlbuilder.NewStringField(remark, "remark", "支付备注(如失败原因)", 0)
 }
 
+func NewRecipientId(recipientId string) *sqlbuilder.Field {
+	return sqlbuilder.NewStringField(recipientId, "recipientId", "收款人ID", 64)
+}
+
+func NewRecipientName(recipientName string) *sqlbuilder.Field {
+	return sqlbuilder.NewStringField(recipientName, "recipientName", "收款人名称", 64)
+}
+
+func NewPayerId(payerId string) *sqlbuilder.Field {
+	return sqlbuilder.NewStringField(payerId, "payerId", "付款人ID", 64)
+}
+
+func NewPayerName(payerName string) *sqlbuilder.Field {
+	return sqlbuilder.NewStringField(payerName, "payerName", "付款人名称", 64)
+}
+
 var NewCreatedAt = commonlanguage.NewCreatedAt
+var NewUpdatedAt = commonlanguage.NewUpdatedAt
 
 var NewDeletedAt = commonlanguage.NewDeletedAt
 
