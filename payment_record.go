@@ -17,9 +17,12 @@ type PayRecordService struct {
 	recordRepository repository.PayRecordRepository
 }
 
-func NewPayRecordService(payRecordRepository repository.PayRecordRepository) (payRecordService *PayRecordService) {
+func NewPayRecordService(handler sqlbuilder.Handler) (payRecordService *PayRecordService) {
+	payRecordRepository := repository.NewPayRecordRepository(handler)
+	orderRepository := repository.NewPayOrderRepository(handler)
 	payRecordService = &PayRecordService{
 		recordRepository: payRecordRepository,
+		orderRepository:  orderRepository,
 	}
 	return payRecordService
 }
@@ -42,20 +45,6 @@ type PayRecordCreateIn struct {
 	ReturnUrl        string `json:"returnUrl"`
 	Remark           string `json:"remark"`
 }
-
-type PayRecord struct {
-	PayId       string                   `json:"payId"`
-	OrderId     string                   `json:"orderId"`
-	OrderAmount int                      `json:"orderPrice"`
-	PayAmount   int                      `json:"paidPrice"`
-	PayUrl      string                   `json:"payUrl"`
-	State       repository.PayOrderState `json:"state"`
-	Expire      int                      `json:"timeOut"`
-	CreatedAt   string                   `json:"date"`
-	PayAgent    string                   `json:"payingAgent"`
-}
-
-type PayRecords []PayRecord
 
 // Create 创建订单,支持批量创建支付记录
 func (s PayRecordService) Create(ins ...PayRecordCreateIn) (err error) {
@@ -201,26 +190,14 @@ func PayIdGenerator() string {
 }
 
 // GetOrderPayInfo 获取订单支付信息
-func (s PayRecordService) GetOrderPayInfo(orderId string) (payOrders PayRecords, err error) {
+func (s PayRecordService) GetOrderPayInfo(orderId string) (payOrders repository.PayRecordModels, err error) {
 	r := s.recordRepository
 	models, err := r.GetByOrderId(orderId)
 	if err != nil {
 		return nil, err
 	}
 	effectRecords := models.FilterByStateEffect()
-	for _, v := range effectRecords {
-		payOrder := PayRecord{
-			PayId:       v.PayId,
-			OrderId:     v.OrderId,
-			OrderAmount: v.OrderAmount,
-			PayAmount:   v.PayAmount,
-			PayUrl:      v.PayUrl,
-			State:       repository.PayOrderState(v.State),
-			Expire:      v.Expire,
-		}
-		payOrders = append(payOrders, payOrder)
-	}
-	return payOrders, nil
+	return effectRecords, nil
 }
 
 // Pay 支付订单 返回订单是否已经支付完成（同一个订单下所有已支付的单总额等于订单金额）
@@ -273,24 +250,13 @@ func (s PayRecordService) GetOrderRestPayRecordAmount(orderId string) (restPayRe
 	return restPayRecordAmount, nil
 }
 
-func (s PayRecordService) Get(payId string) (payOrder *PayRecord, err error) {
+func (s PayRecordService) Get(payId string) (payOrder *repository.PayRecordModel, err error) {
 	r := s.recordRepository
 	model, err := r.GetByPayIdMust(payId)
 	if err != nil {
 		return nil, err
 	}
-	out := &PayRecord{
-		PayId:       model.PayId,
-		OrderId:     model.OrderId,
-		OrderAmount: model.OrderAmount,
-		PayAmount:   model.PayAmount,
-		PayUrl:      model.PayUrl,
-		State:       repository.PayOrderState(model.State),
-		Expire:      model.Expire,
-		CreatedAt:   model.CreatedAt,
-		PayAgent:    model.PayAgent,
-	}
-	return out, nil
+	return &model, nil
 }
 
 func (s PayRecordService) Close(payId string) (err error) {
