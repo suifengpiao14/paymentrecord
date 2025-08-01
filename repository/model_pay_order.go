@@ -46,11 +46,6 @@ var table_pay_order = sqlbuilder.NewTableConfig("pay_order").AddColumns(
 	sqlbuilder.Index{
 		Unique: true,
 		ColumnNames: func(tableColumns sqlbuilder.ColumnConfigs) (columnNames []string) {
-			return []string{tableColumns.GetByFieldNameMust(sqlbuilder.GetFieldName(NewPayId)).DbName}
-		},
-	},
-	sqlbuilder.Index{
-		ColumnNames: func(tableColumns sqlbuilder.ColumnConfigs) (columnNames []string) {
 			return []string{tableColumns.GetByFieldNameMust(sqlbuilder.GetFieldName(NewOrderId)).DbName}
 		},
 	},
@@ -145,14 +140,15 @@ const (
 )
 
 type PayOrderSetIn struct {
-	OrderId     string `json:"orderId"`
-	OrderAmount int    `json:"orderAmount"`
-	UserId      string `json:"userId"`
-	Remark      string `json:"remark"`
+	OrderId     string            `json:"orderId"`
+	OrderAmount int               `json:"orderAmount"`
+	UserId      string            `json:"userId"`
+	Remark      string            `json:"remark"`
+	ExtraFields sqlbuilder.Fields `json:"extraFields"`
 }
 
 func (in PayOrderSetIn) Fields() sqlbuilder.Fields {
-	return sqlbuilder.Fields{
+	fs := sqlbuilder.Fields{
 		NewOrderId(in.OrderId).SetRequired(true).AppendWhereFn(sqlbuilder.ValueFnForward),
 		NewOrderAmount(in.OrderAmount).SetRequired(true).SetMinimum(1),
 		NewUserId(in.UserId),
@@ -160,6 +156,8 @@ func (in PayOrderSetIn) Fields() sqlbuilder.Fields {
 		NewCreatedAt(time.Now().Format(time.DateTime)),
 		NewState(PayOrderModel_state_pending.String()),
 	}
+	fs = fs.Add(in.ExtraFields...)
+	return fs
 }
 
 func (repo PayOrderRepository) Set(in PayOrderSetIn) (err error) {

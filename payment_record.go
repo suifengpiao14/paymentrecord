@@ -200,8 +200,14 @@ func (s PayRecordService) GetOrderPayInfo(orderId string) (payOrders repository.
 	return effectRecords, nil
 }
 
+type PayIn struct {
+	PayId       string            `json:"payId" validate:"required"`
+	ExtraFields sqlbuilder.Fields `json:"-"`
+}
+
 // Pay 支付订单 返回订单是否已经支付完成（同一个订单下所有已支付的单总额等于订单金额）
-func (s PayRecordService) Pay(payId string) (isOrderPayFinished bool, err error) {
+func (s PayRecordService) Pay(in PayIn) (isOrderPayFinished bool, err error) {
+	payId := in.PayId
 	r := s.recordRepository
 	model, err := r.GetByPayIdMust(payId)
 	if err != nil {
@@ -210,6 +216,7 @@ func (s PayRecordService) Pay(payId string) (isOrderPayFinished bool, err error)
 	exFs := sqlbuilder.Fields{
 		repository.NewPaidAt(time.Now().Format(time.DateTime)),
 	}
+	exFs = exFs.Add(in.ExtraFields...)
 	err = s.recordRepository.GetStateMachine().Transform(repository.Action_pay_record_Pay, model.State, model.PayId, exFs...)
 	if err != nil {
 		return false, err
@@ -259,34 +266,57 @@ func (s PayRecordService) Get(payId string) (payOrder *repository.PayRecordModel
 	return &model, nil
 }
 
-func (s PayRecordService) Close(payId string) (err error) {
+type CloseIn struct {
+	PayId       string `json:"payId" validate:"required"`
+	Reason      string `json:"reason"`
+	ExtraFields sqlbuilder.Fields
+}
+
+func (s PayRecordService) Close(in CloseIn) (err error) {
 	fs := sqlbuilder.Fields{
 		repository.NewClosedAt(time.Now().Format(time.DateTime)),
+		repository.NewRemark(in.Reason),
 	}
-	err = s.recordRepository.GetStateMachine().TransformByIdentity(repository.Action_pay_record_Close, payId, fs...)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-func (s PayRecordService) Expire(payId string, reason string) (err error) {
-	fs := sqlbuilder.Fields{
-		repository.NewExpiredAt(time.Now().Format(time.DateTime)),
-		repository.NewRemark(reason),
-	}
-	err = s.recordRepository.GetStateMachine().TransformByIdentity(repository.Action_pay_record_Expire, payId, fs...)
+	fs = fs.Add(in.ExtraFields...)
+	err = s.recordRepository.GetStateMachine().TransformByIdentity(repository.Action_pay_record_Close, in.PayId, fs...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s PayRecordService) Fail(payId string, reason string) (err error) {
+type ExpireIn struct {
+	PayId       string `json:"payId" validate:"required"`
+	Reason      string `json:"reason"`
+	ExtraFields sqlbuilder.Fields
+}
+
+func (s PayRecordService) Expire(in ExpireIn) (err error) {
+	fs := sqlbuilder.Fields{
+		repository.NewExpiredAt(time.Now().Format(time.DateTime)),
+		repository.NewRemark(in.Reason),
+	}
+	fs = fs.Add(in.ExtraFields...)
+	err = s.recordRepository.GetStateMachine().TransformByIdentity(repository.Action_pay_record_Expire, in.PayId, fs...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+type FailIn struct {
+	PayId       string `json:"payId" validate:"required"`
+	Reason      string `json:"reason"`
+	ExtraFields sqlbuilder.Fields
+}
+
+func (s PayRecordService) Fail(in FailIn) (err error) {
 	fs := sqlbuilder.Fields{
 		repository.NewFailedAt(time.Now().Format(time.DateTime)),
-		repository.NewRemark(reason),
+		repository.NewRemark(in.Reason),
 	}
-	err = s.recordRepository.GetStateMachine().TransformByIdentity(repository.Action_pay_record_Expire, payId, fs...)
+	fs = fs.Add(in.ExtraFields...)
+	err = s.recordRepository.GetStateMachine().TransformByIdentity(repository.Action_pay_record_Expire, in.PayId, fs...)
 	if err != nil {
 		return err
 	}
@@ -302,9 +332,9 @@ func (s PayRecordService) CratePayOrder(in PayOrderSetIn) (err error) {
 	return nil
 }
 
-func (s PayRecordService) CloseByOrderId(orderId string, reason string) (err error) {
+func (s PayRecordService) CloseByOrderId(in CloseByOrderIdIn) (err error) {
 	orderService := _PayOrderService(s)
-	err = orderService.Close(orderId, reason)
+	err = orderService.Close(in)
 	if err != nil {
 		return err
 	}

@@ -12,21 +12,18 @@ import (
 
 // userName string, password string, host string, port int, database string
 var mysqlDB = sqlbuilder.GormDBMakeMysql(sqlbuilder.DBConfig{
-	UserName:     "test",
-	Password:     "test",
-	Host:         "127.0.01",
+	UserName:     "root",
+	Password:     "123456",
+	Host:         "10.0.11.125",
 	Port:         3306,
 	DatabaseName: "test",
 }, nil)
 
 var handler = sqlbuilder.NewGormHandler(mysqlDB)
-var repo repository.PayRecordRepository
-var payOrderService *paymentrecord.PayRecordService
+var payOrderService = paymentrecord.NewPayRecordService(handler)
 
 func init() {
 	sqlbuilder.CreateTableIfNotExists = true
-	repo = repository.NewPayRecordRepository(handler)
-	payOrderService = paymentrecord.NewPayRecordService(repo)
 }
 
 var payId = paymentrecord.PayIdGenerator()
@@ -50,8 +47,11 @@ func TestCreateOrder(t *testing.T) {
 }
 
 func TestPayOrder(t *testing.T) {
-	payId := "202507291503311532"
-	isOrderPaid, err := payOrderService.Pay(payId)
+	payId := "202508011738119472"
+	in := paymentrecord.PayIn{
+		PayId: payId,
+	}
+	isOrderPaid, err := payOrderService.Pay(in)
 	require.NoError(t, err)
 	fmt.Println(isOrderPaid)
 }
@@ -63,19 +63,40 @@ func TestIsPaid(t *testing.T) {
 }
 
 func TestCloseByPayId(t *testing.T) {
-	payId := "202507291503311532"
-	err := payOrderService.Close(payId)
+	payId := "202508011738066655"
+	in := paymentrecord.CloseIn{
+		PayId:  payId,
+		Reason: "测试关闭",
+	}
+	err := payOrderService.Close(in)
+	require.NoError(t, err)
+}
+
+func TestCloseByOrderId(t *testing.T) {
+	in := paymentrecord.CloseByOrderIdIn{
+		OrderId: orderId,
+		Reason:  "测试关闭",
+	}
+	err := payOrderService.CloseByOrderId(in)
 	require.NoError(t, err)
 }
 
 func TestFailByPayId(t *testing.T) {
 	payId := "202507291725134384"
-	err := payOrderService.Fail(payId, "测试失败")
+	in := paymentrecord.FailIn{
+		PayId:  payId,
+		Reason: "测试失败",
+	}
+	err := payOrderService.Fail(in)
 	require.NoError(t, err)
 }
 func TestExpireByPayId(t *testing.T) {
 	payId := "202507291740221449"
-	err := payOrderService.Expire(payId, "很长时间m没有支付，过期了")
+	in := paymentrecord.ExpireIn{
+		PayId:  payId,
+		Reason: "很长时间m没有支付，过期了",
+	}
+	err := payOrderService.Expire(in)
 	require.NoError(t, err)
 }
 
@@ -86,7 +107,7 @@ func TestGetOrderPayInfo(t *testing.T) {
 }
 
 func TestGetByPayId(t *testing.T) {
-	payId := "202507291740221449"
+	payId := "202508011738119472"
 	payRecord, err := payOrderService.Get(payId)
 	require.NoError(t, err)
 	fmt.Println(payRecord)

@@ -13,10 +13,11 @@ type _PayOrderService struct {
 }
 
 type PayOrderSetIn struct {
-	OrderId     string `json:"orderId"`
-	OrderAmount int    `json:"orderAmount"`
-	UserId      string `json:"userId"`
-	Remark      string `json:"remark"`
+	OrderId     string            `json:"orderId"`
+	OrderAmount int               `json:"orderAmount"`
+	UserId      string            `json:"userId"`
+	Remark      string            `json:"remark"`
+	ExtraFields sqlbuilder.Fields `json:"extraFields"`
 }
 
 func (s _PayOrderService) Set(in PayOrderSetIn) (err error) {
@@ -25,6 +26,7 @@ func (s _PayOrderService) Set(in PayOrderSetIn) (err error) {
 		OrderAmount: in.OrderAmount,
 		UserId:      in.UserId,
 		Remark:      in.Remark,
+		ExtraFields: in.ExtraFields,
 	}
 	err = s.orderRepository.Set(payOrderSetIn)
 	if err != nil {
@@ -33,7 +35,15 @@ func (s _PayOrderService) Set(in PayOrderSetIn) (err error) {
 	return nil
 }
 
-func (s _PayOrderService) Close(orderId string, reson string) (err error) {
+type CloseByOrderIdIn struct {
+	OrderId     string `json:"orderId" validate:"required"`
+	Reason      string `json:"reason"`
+	ExtraFields sqlbuilder.Fields
+}
+
+func (s _PayOrderService) Close(in CloseByOrderIdIn) (err error) {
+	orderId := in.OrderId
+
 	orderStateMichine := s.orderRepository.GetStateMachine()
 	payOrderStateModel, err := orderStateMichine.GetStateByIdentity(orderId)
 	if err != nil {
@@ -60,8 +70,9 @@ func (s _PayOrderService) Close(orderId string, reson string) (err error) {
 	}
 	stateCloseExtraFs := sqlbuilder.Fields{
 		repository.NewClosedAt(time.Now().Format(time.DateTime)),
-		repository.NewRemark(reson),
+		repository.NewRemark(in.Reason),
 	}
+	stateCloseExtraFs = stateCloseExtraFs.Add(in.ExtraFields...)
 	err = orderStateMichine.Transaction(func(txHandler sqlbuilder.Handler) (err error) {
 		txOrderStateMachine := orderStateMichine.WithTxHandler(txHandler)
 		//关闭订单
