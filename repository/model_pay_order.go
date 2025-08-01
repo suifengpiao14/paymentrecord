@@ -89,7 +89,17 @@ func NewPayOrderRepository(handler sqlbuilder.Handler) (repository PayOrderRepos
 func (repo PayOrderRepository) GetStateMachine() statemachine.StateMachine {
 	return repo.stateMachine
 }
+func (repo PayOrderRepository) GetTable() sqlbuilder.TableConfig {
+	return repo.repository.GetTable()
+}
 
+func (repo PayOrderRepository) TransactionForMutiTable(fc func(tx sqlbuilder.Handler) (err error)) error {
+	return repo.repository.TransactionForMutiTable(fc)
+}
+func (repo PayOrderRepository) WithTxHandler(txHandler sqlbuilder.Handler) PayOrderRepository {
+	repo.repository = repo.repository.WithTxHandler(txHandler)
+	return repo
+}
 func (repo PayOrderRepository) makeStateMachine(tableConfig sqlbuilder.TableConfig) (stateMachine *statemachine.StateMachine) {
 	fieldNameOrderId := sqlbuilder.GetFieldName(NewOrderId)
 	colIdentity := tableConfig.Columns.GetByFieldNameMust(fieldNameOrderId)

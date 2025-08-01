@@ -318,6 +318,11 @@ func (repo PayRecordRepository) Create(in PayRecordCreateIn) (err error) {
 	return nil
 }
 
+func (repo PayRecordRepository) WithTxHandler(txHandler sqlbuilder.Handler) PayRecordRepository {
+	repo.repository = repo.repository.WithTxHandler(txHandler)
+	return repo
+}
+
 func (repo PayRecordRepository) GetByPayId(payId string) (model PayRecordModel, exists bool, err error) {
 	fs := sqlbuilder.Fields{
 		NewPayId(payId).AppendWhereFn(sqlbuilder.ValueFnForward),

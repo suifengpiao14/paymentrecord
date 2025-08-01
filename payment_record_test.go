@@ -45,9 +45,8 @@ func TestCreateOrder(t *testing.T) {
 		UserId:      "test_user_154",
 		ClientIp:    "127.0.0.1",
 	}
-	out, err := payOrderService.Create(crateIn)
+	err := payOrderService.Create(crateIn)
 	require.NoError(t, err)
-	fmt.Println(out)
 }
 
 func TestPayOrder(t *testing.T) {

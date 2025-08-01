@@ -57,93 +57,111 @@ type PayRecord struct {
 
 type PayRecords []PayRecord
 
-type Config struct {
-	Key       string `json:"key"`
-	NotifyUrl string `json:"notifyUrl"`
-	ReturnUrl string `json:"returnUrl"`
-	PayUrl    string `json:"payUrl"`
-}
-
-// Create 创建订单
-func (s PayRecordService) Create(in PayRecordCreateIn) (out *PayRecord, err error) {
-	err = in.validate()
-	if err != nil {
-		return nil, err
+// Create 创建订单,支持批量创建支付记录
+func (s PayRecordService) Create(ins ...PayRecordCreateIn) (err error) {
+	if len(ins) == 0 {
+		return errors.New("没有支付单")
 	}
-	payRecords, err := s.recordRepository.GetByOrderId(in.OrderId)
+	for _, in := range ins {
+		err = in.validate()
+		if err != nil {
+			return err
+		}
+		err = s.validate(in)
+		if err != nil {
+			return err
+		}
+	}
+
+	inFirst := ins[0]
+	err = s.orderRepository.TransactionForMutiTable(func(tx sqlbuilder.Handler) (err error) {
+		orderRepository := s.orderRepository.WithTxHandler(tx)
+		// 保存支付单
+		payOrderSetIn := repository.PayOrderSetIn{
+			OrderId:     inFirst.OrderId,
+			OrderAmount: inFirst.OrderAmount,
+			UserId:      inFirst.UserId,
+			Remark:      inFirst.Remark,
+		}
+		err = orderRepository.Set(payOrderSetIn)
+		if err != nil {
+			return err
+		}
+
+		recordRepository := s.recordRepository.WithTxHandler(tx)
+
+		for _, in := range ins {
+			payOrderIn := repository.PayRecordCreateIn{
+				PayId:            in.PayId,
+				OrderId:          in.OrderId,
+				OrderAmount:      in.OrderAmount,
+				PayAmount:        in.PayAmount,
+				PayAgent:         in.PayAgent,
+				State:            string(repository.PayOrderModel_state_pending),
+				UserId:           in.UserId,
+				ClientIp:         in.ClientIp,
+				PayParam:         in.PayParam,
+				PayUrl:           in.PayUrl,
+				Expire:           0,
+				ReturnUrl:        in.ReturnUrl,
+				NotifyUrl:        in.NotifyUrl,
+				Remark:           in.Remark,
+				RecipientAccount: in.RecipientAccount,
+				RecipientName:    in.RecipientName,
+				PaymentAccount:   in.PaymentAccount,
+				PaymentName:      in.PaymentName,
+			}
+			err = recordRepository.Create(payOrderIn)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
 	if err != nil {
-		return nil, err
+		return err
+	}
+
+	return nil
+}
+func (s PayRecordService) validate(ins PayRecordCreateIn) (err error) {
+	payRecords, err := s.recordRepository.GetByOrderId(ins.OrderId)
+	if err != nil {
+		return err
 	}
 	orderAmount := payRecords.GetOrderAmount()
-	if orderAmount != 0 && orderAmount != in.OrderAmount {
-		err = errors.Errorf("订单已开始支付，不许修改金额，已支付的支付单记录订单金额为:%d,当前订单金额为:%d", orderAmount, in.OrderAmount)
-		return nil, err
+	if orderAmount != 0 && orderAmount != ins.OrderAmount {
+		err = errors.Errorf("订单已开始支付，不许修改金额，已支付的支付单记录订单金额为:%d,当前订单金额为:%d", orderAmount, ins.OrderAmount)
+		return err
 	}
 
 	paidRecords := payRecords.FilterByStatePaid()
 	paidAmount := paidRecords.TotalAmount()
-	if paidAmount >= in.OrderAmount {
+	if paidAmount >= ins.OrderAmount {
 		err = errors.New("订单已支付完成")
-		return nil, err
+		return err
 	}
 	pendingAmount := payRecords.FilterByStatePending().TotalAmount()
 	paidPendingAmount := paidAmount + pendingAmount
-	if paidPendingAmount >= in.OrderAmount { // 如果有支付中的订单，则不允许创建新的
+	if paidPendingAmount >= ins.OrderAmount { // 如果有支付中的订单，则不允许创建新的
 		err = errors.New("支付单金额已足够支付订单，请完成支付中的支付单")
-		return nil, err
+		return err
 	}
-	maxAmount := in.OrderAmount - paidPendingAmount
-	if maxAmount < in.PayAmount { // 支付金额总和大于订单金额，不允许创建
+	maxAmount := ins.OrderAmount - paidPendingAmount
+	if maxAmount < ins.PayAmount { // 支付金额总和大于订单金额，不允许创建
 		err = errors.Errorf(
 			"金额有误(订单金额-%d,已支付金额-%d,待支付金额-%d,当前支付单最大金额-%d),收到支付金额-%d,订单ID-%s",
-			in.OrderAmount,
+			ins.OrderAmount,
 			paidAmount,
 			pendingAmount,
 			maxAmount,
-			in.OrderAmount,
-			in.OrderId,
+			ins.OrderAmount,
+			ins.OrderId,
 		)
-		return nil, err
+		return err
 	}
-
-	createdAt := time.Now().Format(time.DateTime)
-	payOrderIn := repository.PayRecordCreateIn{
-		PayId:            in.PayId,
-		OrderId:          in.OrderId,
-		OrderAmount:      in.OrderAmount,
-		PayAmount:        in.PayAmount,
-		PayAgent:         in.PayAgent,
-		State:            string(repository.PayOrderModel_state_pending),
-		UserId:           in.UserId,
-		ClientIp:         in.ClientIp,
-		PayParam:         in.PayParam,
-		PayUrl:           in.PayUrl,
-		Expire:           0,
-		ReturnUrl:        in.ReturnUrl,
-		NotifyUrl:        in.NotifyUrl,
-		Remark:           in.Remark,
-		RecipientAccount: in.RecipientAccount,
-		RecipientName:    in.RecipientName,
-		PaymentAccount:   in.PaymentAccount,
-		PaymentName:      in.PaymentName,
-	}
-	err = s.recordRepository.Create(payOrderIn)
-	if err != nil {
-		return nil, err
-	}
-
-	out = &PayRecord{
-		PayId:       payOrderIn.PayId,
-		OrderId:     payOrderIn.OrderId,
-		OrderAmount: payOrderIn.OrderAmount,
-		PayAmount:   payOrderIn.PayAmount,
-		PayUrl:      payOrderIn.PayUrl,
-		State:       repository.PayOrderState(payOrderIn.State),
-		Expire:      payOrderIn.Expire,
-		CreatedAt:   createdAt,
-		PayAgent:    payOrderIn.PayAgent,
-	}
-	return out, nil
+	return nil
 }
 
 // validate 验证请求参数
@@ -303,6 +321,24 @@ func (s PayRecordService) Fail(payId string, reason string) (err error) {
 		repository.NewRemark(reason),
 	}
 	err = s.recordRepository.GetStateMachine().TransformByIdentity(repository.Action_pay_record_Expire, payId, fs...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s PayRecordService) CratePayOrder(in PayOrderSetIn) (err error) {
+	orderService := _PayOrderService(s)
+	err = orderService.Set(in)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s PayRecordService) CloseByOrderId(orderId string, reason string) (err error) {
+	orderService := _PayOrderService(s)
+	err = orderService.Close(orderId, reason)
 	if err != nil {
 		return err
 	}
