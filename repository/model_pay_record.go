@@ -3,10 +3,10 @@ package repository
 import (
 	"errors"
 	"slices"
-	"time"
 
 	"github.com/spf13/cast"
 	"github.com/suifengpiao14/sqlbuilder"
+	"gitlab.huishoubao.com/gopackage/statemachine"
 )
 
 /*
@@ -56,19 +56,6 @@ type PayRecordModel struct {
 	ClosedAt    string `gorm:"column:Fclosed_at" json:"closedAt"`
 	ExpiredAt   string `gorm:"column:Fexpired_at" json:"expiredAt"`
 	FailedAt    string `gorm:"column:Ffailed_at" json:"failedAt"`
-}
-
-func (m PayRecordModel) StateIsClosed() bool {
-	return m.State == PayOrderModel_state_closed.String()
-}
-func (m PayRecordModel) StateIsPaid() bool {
-	return m.State == PayOrderModel_state_paid.String()
-}
-func (m PayRecordModel) StateIsFailed() bool {
-	return m.State == PayOrderModel_state_failed.String()
-}
-func (m PayRecordModel) StateIsExpired() bool {
-	return m.State == PayOrderModel_state_expired.String()
 }
 
 type PayRecordModels []PayRecordModel
@@ -193,15 +180,87 @@ var table_pay_record = sqlbuilder.NewTableConfig("pay_record").AddColumns(
 ).WithComment("收款记录表")
 
 type PayRecordRepository struct {
-	repository sqlbuilder.Repository[PayRecordModel]
+	stateMachine statemachine.StateMachine
+	repository   sqlbuilder.Repository[PayRecordModel]
 }
 
-func NewPayRecordRepository(handler sqlbuilder.Handler) PayRecordRepository {
+func NewPayRecordRepository(handler sqlbuilder.Handler) (repository PayRecordRepository) {
 	tableConfig := table_pay_record.WithHandler(handler)
-	return PayRecordRepository{
-		repository: sqlbuilder.NewRepository[PayRecordModel](tableConfig),
+	stateMachine := repository.makeStateMachine(tableConfig)
+	repository = PayRecordRepository{
+		stateMachine: *stateMachine,
+		repository:   sqlbuilder.NewRepository[PayRecordModel](tableConfig),
 	}
+	return repository
 }
+
+func (repo PayRecordRepository) GetStateMachine() statemachine.StateMachine {
+	return repo.stateMachine
+}
+
+func (payRecordRepository PayRecordRepository) makeStateMachine(tableConfig sqlbuilder.TableConfig) (stateMachine *statemachine.StateMachine) {
+	fieldNamePayId := sqlbuilder.GetFieldName(NewPayId)
+	colIdentity := tableConfig.Columns.GetByFieldNameMust(fieldNamePayId)
+	fieldNameState := sqlbuilder.GetFieldName(NewState)
+	colState := tableConfig.Columns.GetByFieldNameMust(fieldNameState)
+	stateRepository := statemachine.NewStateRepository(
+		tableConfig,
+		statemachine.StateModelDbColumnRefer{
+			Identity: colIdentity.DbName,
+			State:    colState.DbName,
+		},
+	)
+	stateMachine = newPayRecordStateMachine(stateRepository)
+	return stateMachine
+}
+
+func newPayRecordStateMachine(stateRepository statemachine.StateRepository) *statemachine.StateMachine {
+	var actions = statemachine.Actions{
+		{
+			ActionName: Action_pay_record_Pay,
+			SrcStates: []string{
+				PayOrderModel_state_pending.String(),
+				PayOrderModel_state_failed.String(), // 支付失败可以继续支付（比如钱包金额不够、选中的优惠券过期等，充值后再支付，增加支付失败状态可以记录原因）
+				PayOrderModel_state_paid.String(),   // 支持幂等
+			},
+			DstState: PayOrderModel_state_paid.String(),
+		},
+		{
+			ActionName: Action_pay_record_Expire, // 过期时需要先同步查询，看是否已经支付（比如消息异常导致未同步到数据）
+
+			SrcStates: []string{
+				PayOrderModel_state_pending.String(),
+				PayOrderModel_state_expired.String(), // 支持幂等
+			},
+			DstState: PayOrderModel_state_expired.String(),
+		},
+		{
+			ActionName: Action_pay_record_Fail,
+			SrcStates: []string{
+				PayOrderModel_state_pending.String(),
+				PayOrderModel_state_failed.String(), // 支持幂等
+			},
+			DstState: PayOrderModel_state_failed.String(),
+		},
+		{
+			ActionName: Action_pay_record_Close,
+			SrcStates: []string{
+				PayOrderModel_state_pending.String(),
+				PayOrderModel_state_closed.String(), // 支持幂等
+			},
+			DstState: PayOrderModel_state_closed.String(),
+		},
+	}
+	stateMachine := statemachine.NewStateMachine(actions, stateRepository)
+	return stateMachine
+}
+
+const (
+	Action_pay_record_Pay    = "actionPay"
+	Action_pay_record_Expire = "actionExpire"
+	Action_pay_record_Fail   = "actionFail"
+	Action_pay_record_Close  = "actionClose"
+)
 
 type PayRecordCreateIn struct {
 	PayId            string `json:"payId"`
@@ -247,27 +306,31 @@ func (in PayRecordCreateIn) Fields() sqlbuilder.Fields {
 	}
 }
 
-func (po PayRecordRepository) Create(in PayRecordCreateIn) (err error) {
-	err = po.repository.Insert(in.Fields())
+func (repo PayRecordRepository) GetTable() sqlbuilder.TableConfig {
+	return repo.repository.GetTable()
+}
+
+func (repo PayRecordRepository) Create(in PayRecordCreateIn) (err error) {
+	err = repo.repository.Insert(in.Fields())
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (po PayRecordRepository) GetByPayId(payId string) (model PayRecordModel, exists bool, err error) {
+func (repo PayRecordRepository) GetByPayId(payId string) (model PayRecordModel, exists bool, err error) {
 	fs := sqlbuilder.Fields{
 		NewPayId(payId).AppendWhereFn(sqlbuilder.ValueFnForward),
 	}
-	model, exists, err = po.repository.First(fs)
+	model, exists, err = repo.repository.First(fs)
 	if err != nil {
 		return model, exists, err
 	}
 	return model, exists, nil
 }
 
-func (po PayRecordRepository) GetByPayIdMust(payId string) (model PayRecordModel, err error) {
-	model, exists, err := po.GetByPayId(payId)
+func (repo PayRecordRepository) GetByPayIdMust(payId string) (model PayRecordModel, err error) {
+	model, exists, err := repo.GetByPayId(payId)
 	if err != nil {
 		return model, err
 	}
@@ -278,124 +341,13 @@ func (po PayRecordRepository) GetByPayIdMust(payId string) (model PayRecordModel
 	return model, nil
 }
 
-func (po PayRecordRepository) GetByOrderId(orderId string) (models PayRecordModels, err error) {
+func (repo PayRecordRepository) GetByOrderId(orderId string) (models PayRecordModels, err error) {
 	fs := sqlbuilder.Fields{
 		NewOrderId(orderId).AppendWhereFn(sqlbuilder.ValueFnForward),
 	}
-	models, err = po.repository.All(fs)
+	models, err = repo.repository.All(fs)
 	if err != nil {
 		return models, err
 	}
 	return models, nil
-}
-
-type ChangeStatusIn struct {
-	PayId       string
-	NewState    string
-	OldState    string
-	ExtraFields sqlbuilder.Fields
-}
-
-func (in ChangeStatusIn) Fields() sqlbuilder.Fields {
-	fs := sqlbuilder.Fields{
-		NewPayId(in.PayId).SetRequired(true).ShieldUpdate(true).AppendWhereFn(sqlbuilder.ValueFnForward),
-		NewState(in.NewState).Apply(func(f *sqlbuilder.Field, fs ...*sqlbuilder.Field) {
-			//查询条件值使用旧状态值
-			f.WhereFns.ResetSetValueFn(func(inputValue any, f *sqlbuilder.Field, fs ...*sqlbuilder.Field) (any, error) {
-				return in.OldState, nil
-			})
-		}),
-	}
-	fs = fs.Add(in.ExtraFields...)
-	return fs
-}
-
-func (po PayRecordRepository) ChangeStatus(in ChangeStatusIn) (err error) {
-	fs := in.Fields()
-	err = po.repository.Update(fs)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (po PayRecordRepository) Pay(payId string, paidState string, oldState string) (err error) {
-	in := ChangeStatusIn{
-		PayId:       payId,
-		NewState:    paidState,
-		OldState:    oldState,
-		ExtraFields: sqlbuilder.Fields{NewPaidAt(time.Now().Format(time.DateTime))},
-	}
-	err = po.ChangeStatus(in)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (po PayRecordRepository) CloseByPayId(payId string, closeState string, oldState string) (err error) {
-	in := ChangeStatusIn{
-		PayId:       payId,
-		NewState:    closeState,
-		OldState:    oldState,
-		ExtraFields: sqlbuilder.Fields{NewClosedAt(time.Now().Format(time.DateTime))},
-	}
-	err = po.ChangeStatus(in)
-	return err
-}
-func (po PayRecordRepository) ExpireByPayId(payId string, expiredState string, oldState string, reason string) (err error) {
-	in := ChangeStatusIn{
-		PayId:    payId,
-		NewState: expiredState,
-		OldState: oldState,
-		ExtraFields: sqlbuilder.Fields{
-			NewRemark(reason),
-			NewExpiredAt(time.Now().Format(time.DateTime)),
-		},
-	}
-	err = po.ChangeStatus(in)
-	return err
-}
-
-type CloseIn = ChangeStatusIn
-
-// CloseBatch 批量关闭订单支付状态，如果存在多个支付流水号，则全部关闭。当订单关闭时，使用事务批量关闭。
-func (po PayRecordRepository) CloseBatch(closeInArr ...CloseIn) (err error) {
-
-	extraFields := sqlbuilder.Fields{NewClosedAt(time.Now().Format(time.DateTime))}
-	for i := range closeInArr {
-		closeInArr[i].ExtraFields = extraFields
-	}
-
-	err = po.repository.Transaction(func(txRepository sqlbuilder.Repository[PayRecordModel]) (err error) {
-		for _, closeIn := range closeInArr {
-			fs := closeIn.Fields()
-			err = txRepository.Update(fs)
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (po PayRecordRepository) Failed(payId string, failedState string, oldState string, reason string) (err error) {
-	in := ChangeStatusIn{
-		PayId:    payId,
-		NewState: failedState,
-		OldState: oldState,
-		ExtraFields: sqlbuilder.Fields{
-			NewFailedAt(time.Now().Format(time.DateTime)),
-			NewRemark(reason),
-		},
-	}
-
-	err = po.ChangeStatus(in)
-	return err
 }

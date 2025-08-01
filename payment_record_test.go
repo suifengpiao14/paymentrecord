@@ -19,14 +19,15 @@ var mysqlDB = sqlbuilder.GormDBMakeMysql(sqlbuilder.DBConfig{
 	DatabaseName: "test",
 }, nil)
 
+var handler = sqlbuilder.NewGormHandler(mysqlDB)
+var repo repository.PayRecordRepository
+var payOrderService *paymentrecord.PayRecordService
+
 func init() {
 	sqlbuilder.CreateTableIfNotExists = true
+	repo = repository.NewPayRecordRepository(handler)
+	payOrderService = paymentrecord.NewPayRecordService(repo)
 }
-
-var cfg = paymentrecord.Config{}
-var handler = sqlbuilder.NewGormHandler(mysqlDB)
-var repo = repository.NewPayRecordRepository(handler)
-var payOrderService = paymentrecord.NewPayOrderService(repo)
 
 var payId = paymentrecord.PayIdGenerator()
 
@@ -34,7 +35,7 @@ var payId = paymentrecord.PayIdGenerator()
 var orderId = "o1545"
 
 func TestCreateOrder(t *testing.T) {
-	crateIn := paymentrecord.PayOrderCreateIn{
+	crateIn := paymentrecord.PayRecordCreateIn{
 		PayId:       payId,
 		OrderId:     orderId,
 		PayAgent:    repository.PayingAgent_Wechat,
@@ -56,11 +57,6 @@ func TestPayOrder(t *testing.T) {
 	fmt.Println(isOrderPaid)
 }
 
-func TestCloseOrder(t *testing.T) {
-	err := payOrderService.CloseByOrderId(orderId)
-	require.NoError(t, err)
-}
-
 func TestIsPaid(t *testing.T) {
 	isPaid, err := payOrderService.IsPaid(orderId)
 	require.NoError(t, err)
@@ -69,18 +65,18 @@ func TestIsPaid(t *testing.T) {
 
 func TestCloseByPayId(t *testing.T) {
 	payId := "202507291503311532"
-	err := payOrderService.CloseByPayId(payId)
+	err := payOrderService.Close(payId)
 	require.NoError(t, err)
 }
 
 func TestFailByPayId(t *testing.T) {
 	payId := "202507291725134384"
-	err := payOrderService.FailByPayId(payId, "测试失败")
+	err := payOrderService.Fail(payId, "测试失败")
 	require.NoError(t, err)
 }
 func TestExpireByPayId(t *testing.T) {
 	payId := "202507291740221449"
-	err := payOrderService.ExpireByPayId(payId, "很长时间m没有支付，过期了")
+	err := payOrderService.Expire(payId, "很长时间m没有支付，过期了")
 	require.NoError(t, err)
 }
 
@@ -92,7 +88,7 @@ func TestGetOrderPayInfo(t *testing.T) {
 
 func TestGetByPayId(t *testing.T) {
 	payId := "202507291740221449"
-	payRecord, err := payOrderService.GetByPayId(payId)
+	payRecord, err := payOrderService.Get(payId)
 	require.NoError(t, err)
 	fmt.Println(payRecord)
 }

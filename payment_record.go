@@ -8,24 +8,23 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-
 	"github.com/suifengpiao14/paymentrecord/repository"
+	"github.com/suifengpiao14/sqlbuilder"
 )
 
-type PayOrderService struct {
-	//config     Config
-	repository repository.PayRecordRepository
+type PayRecordService struct {
+	orderRepository  repository.PayOrderRepository
+	recordRepository repository.PayRecordRepository
 }
 
-func NewPayOrderService(repository repository.PayRecordRepository) PayOrderService {
-	return PayOrderService{
-		//config:     config,
-		repository: repository,
+func NewPayRecordService(payRecordRepository repository.PayRecordRepository) (payRecordService *PayRecordService) {
+	payRecordService = &PayRecordService{
+		recordRepository: payRecordRepository,
 	}
-
+	return payRecordService
 }
 
-type PayOrderCreateIn struct {
+type PayRecordCreateIn struct {
 	PayId            string `json:"payId"`
 	OrderId          string `json:"orderId"`
 	PayAgent         string `json:"payAgent"`   // 支付机构 weixin:微信 alipay:支付宝
@@ -44,7 +43,7 @@ type PayOrderCreateIn struct {
 	Remark           string `json:"remark"`
 }
 
-type PayOrder struct {
+type PayRecord struct {
 	PayId       string                   `json:"payId"`
 	OrderId     string                   `json:"orderId"`
 	OrderAmount int                      `json:"orderPrice"`
@@ -56,12 +55,7 @@ type PayOrder struct {
 	PayAgent    string                   `json:"payingAgent"`
 }
 
-func (m *PayOrder) GetStateFSM() (stateMachine *PayOrderStateMachine) {
-	stateMachine = NewPayOrderStateMachine(m.State)
-	return stateMachine
-}
-
-type PayOrders []PayOrder
+type PayRecords []PayRecord
 
 type Config struct {
 	Key       string `json:"key"`
@@ -71,12 +65,12 @@ type Config struct {
 }
 
 // Create 创建订单
-func (s PayOrderService) Create(in PayOrderCreateIn) (out *PayOrder, err error) {
+func (s PayRecordService) Create(in PayRecordCreateIn) (out *PayRecord, err error) {
 	err = in.validate()
 	if err != nil {
 		return nil, err
 	}
-	payRecords, err := s.repository.GetByOrderId(in.OrderId)
+	payRecords, err := s.recordRepository.GetByOrderId(in.OrderId)
 	if err != nil {
 		return nil, err
 	}
@@ -133,12 +127,12 @@ func (s PayOrderService) Create(in PayOrderCreateIn) (out *PayOrder, err error) 
 		PaymentAccount:   in.PaymentAccount,
 		PaymentName:      in.PaymentName,
 	}
-	err = s.repository.Create(payOrderIn)
+	err = s.recordRepository.Create(payOrderIn)
 	if err != nil {
 		return nil, err
 	}
 
-	out = &PayOrder{
+	out = &PayRecord{
 		PayId:       payOrderIn.PayId,
 		OrderId:     payOrderIn.OrderId,
 		OrderAmount: payOrderIn.OrderAmount,
@@ -153,7 +147,7 @@ func (s PayOrderService) Create(in PayOrderCreateIn) (out *PayOrder, err error) 
 }
 
 // validate 验证请求参数
-func (req *PayOrderCreateIn) validate() error {
+func (req *PayRecordCreateIn) validate() error {
 	if req.PayId == "" {
 		return errors.New("payId不能为空")
 	}
@@ -184,21 +178,20 @@ func PayIdGenerator() string {
 		rd.Intn(9)+1,
 		rd.Intn(9)+1,
 		rd.Intn(9)+1)
-
 	// 组合订单ID
 	return timePart + randPart
 }
 
 // GetOrderPayInfo 获取订单支付信息
-func (s PayOrderService) GetOrderPayInfo(orderId string) (payOrders PayOrders, err error) {
-	r := s.repository
+func (s PayRecordService) GetOrderPayInfo(orderId string) (payOrders PayRecords, err error) {
+	r := s.recordRepository
 	models, err := r.GetByOrderId(orderId)
 	if err != nil {
 		return nil, err
 	}
 	effectRecords := models.FilterByStateEffect()
 	for _, v := range effectRecords {
-		payOrder := PayOrder{
+		payOrder := PayRecord{
 			PayId:       v.PayId,
 			OrderId:     v.OrderId,
 			OrderAmount: v.OrderAmount,
@@ -213,22 +206,16 @@ func (s PayOrderService) GetOrderPayInfo(orderId string) (payOrders PayOrders, e
 }
 
 // Pay 支付订单 返回订单是否已经支付完成（同一个订单下所有已支付的单总额等于订单金额）
-func (s PayOrderService) Pay(payId string) (isOrderPayFinished bool, err error) {
-	r := s.repository
+func (s PayRecordService) Pay(payId string) (isOrderPayFinished bool, err error) {
+	r := s.recordRepository
 	model, err := r.GetByPayIdMust(payId)
 	if err != nil {
 		return false, err
 	}
-	stateFSM := NewPayOrderStateMachine(repository.PayOrderState(model.State))
-	err = stateFSM.CanPay()
-	if err != nil {
-		return false, err
+	exFs := sqlbuilder.Fields{
+		repository.NewPaidAt(time.Now().Format(time.DateTime)),
 	}
-	if model.StateIsPaid() { // 已支付，直接返回
-		return true, nil
-	}
-
-	err = r.Pay(model.PayId, repository.PayOrderModel_state_paid.String(), model.State)
+	err = s.recordRepository.GetStateMachine().Transform(repository.Action_pay_record_Pay, model.State, model.PayId, exFs...)
 	if err != nil {
 		return false, err
 	}
@@ -238,11 +225,18 @@ func (s PayOrderService) Pay(payId string) (isOrderPayFinished bool, err error) 
 		return false, err
 	}
 	isOrderPayFinished = payRecords.IsOrderPayFinished()
+
+	if isOrderPayFinished { // 如果订单已经支付完成，则改变pay_order 状态为 已支付
+		err = s.orderRepository.GetStateMachine().TransformByIdentity(repository.Action_pay_order_Pay, model.OrderId)
+		if err != nil {
+			return isOrderPayFinished, err
+		}
+	}
 	return isOrderPayFinished, nil
 }
 
-func (s PayOrderService) IsPaid(orderId string) (ok bool, err error) {
-	records, err := s.repository.GetByOrderId(orderId)
+func (s PayRecordService) IsPaid(orderId string) (ok bool, err error) {
+	records, err := s.recordRepository.GetByOrderId(orderId)
 	if err != nil {
 		return false, err
 	}
@@ -251,8 +245,8 @@ func (s PayOrderService) IsPaid(orderId string) (ok bool, err error) {
 }
 
 // GetOrderRestPayRecordAmount 获取订单剩余可创建待支付单的金额
-func (s PayOrderService) GetOrderRestPayRecordAmount(orderId string) (restPayRecordAmount int, err error) {
-	records, err := s.repository.GetByOrderId(orderId)
+func (s PayRecordService) GetOrderRestPayRecordAmount(orderId string) (restPayRecordAmount int, err error) {
+	records, err := s.recordRepository.GetByOrderId(orderId)
 	if err != nil {
 		return 0, err
 	}
@@ -261,42 +255,13 @@ func (s PayOrderService) GetOrderRestPayRecordAmount(orderId string) (restPayRec
 	return restPayRecordAmount, nil
 }
 
-// CloseByOrderId 关闭订单支付，当订单关闭时，关闭订单对应的支付单
-func (s PayOrderService) CloseByOrderId(orderId string) (err error) {
-	records, err := s.repository.GetByOrderId(orderId)
-	if err != nil {
-		return err
-	}
-
-	r := s.repository
-	closeBatchIn := make([]repository.CloseIn, 0)
-	for _, payRecord := range records {
-		if payRecord.StateIsClosed() { // 已关闭的不需要再关闭
-			continue
-		}
-		closeIn := repository.CloseIn{PayId: payRecord.PayId, NewState: string(repository.PayOrderModel_state_closed), OldState: payRecord.State}
-		stateMachine := NewPayOrderStateMachine(repository.PayOrderState(payRecord.State))
-		err = stateMachine.CanClose()
-		if err != nil {
-			err = errors.WithMessagef(err, "支付单payId:%s", payRecord.PayId)
-			return err
-		}
-		closeBatchIn = append(closeBatchIn, closeIn)
-	}
-	err = r.CloseBatch(closeBatchIn...)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s PayOrderService) GetByPayId(payId string) (payOrder *PayOrder, err error) {
-	r := s.repository
+func (s PayRecordService) Get(payId string) (payOrder *PayRecord, err error) {
+	r := s.recordRepository
 	model, err := r.GetByPayIdMust(payId)
 	if err != nil {
 		return nil, err
 	}
-	out := &PayOrder{
+	out := &PayRecord{
 		PayId:       model.PayId,
 		OrderId:     model.OrderId,
 		OrderAmount: model.OrderAmount,
@@ -310,56 +275,34 @@ func (s PayOrderService) GetByPayId(payId string) (payOrder *PayOrder, err error
 	return out, nil
 }
 
-func (s PayOrderService) CloseByPayId(payId string) (err error) {
-	record, err := s.GetByPayId(payId)
-	if err != nil {
-		return err
+func (s PayRecordService) Close(payId string) (err error) {
+	fs := sqlbuilder.Fields{
+		repository.NewClosedAt(time.Now().Format(time.DateTime)),
 	}
-	stateFSM := record.GetStateFSM()
-	err = stateFSM.CanClose()
-	if err != nil {
-		return err
-	}
-
-	r := s.repository
-	err = r.CloseByPayId(record.PayId, repository.PayOrderModel_state_paid.String(), record.State.String())
+	err = s.recordRepository.GetStateMachine().TransformByIdentity(repository.Action_pay_record_Close, payId, fs...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
-func (s PayOrderService) ExpireByPayId(payId string, reason string) (err error) {
-	record, err := s.GetByPayId(payId)
-	if err != nil {
-		return err
+func (s PayRecordService) Expire(payId string, reason string) (err error) {
+	fs := sqlbuilder.Fields{
+		repository.NewExpiredAt(time.Now().Format(time.DateTime)),
+		repository.NewRemark(reason),
 	}
-	stateFSM := record.GetStateFSM()
-	err = stateFSM.CanExpire()
-	if err != nil {
-		return err
-	}
-
-	r := s.repository
-	err = r.ExpireByPayId(record.PayId, repository.PayOrderModel_state_expired.String(), record.State.String(), reason)
+	err = s.recordRepository.GetStateMachine().TransformByIdentity(repository.Action_pay_record_Expire, payId, fs...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s PayOrderService) FailByPayId(payId string, reason string) (err error) {
-	record, err := s.GetByPayId(payId)
-	if err != nil {
-		return err
+func (s PayRecordService) Fail(payId string, reason string) (err error) {
+	fs := sqlbuilder.Fields{
+		repository.NewFailedAt(time.Now().Format(time.DateTime)),
+		repository.NewRemark(reason),
 	}
-	stateFSM := record.GetStateFSM()
-	err = stateFSM.CanFail()
-	if err != nil {
-		return err
-	}
-
-	r := s.repository
-	err = r.Failed(record.PayId, repository.PayOrderModel_state_failed.String(), record.State.String(), reason)
+	err = s.recordRepository.GetStateMachine().TransformByIdentity(repository.Action_pay_record_Expire, payId, fs...)
 	if err != nil {
 		return err
 	}

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/suifengpiao14/sqlbuilder"
+	"gitlab.huishoubao.com/gopackage/statemachine"
 )
 
 /*
@@ -34,7 +35,6 @@ var table_pay_order = sqlbuilder.NewTableConfig("pay_order").AddColumns(
 	sqlbuilder.NewColumn("Fcreated_at", sqlbuilder.GetField(NewCreatedAt)),
 	sqlbuilder.NewColumn("Fpaid_at", sqlbuilder.GetField(NewPaidAt)),
 	sqlbuilder.NewColumn("Fclosed_at", sqlbuilder.GetField(NewClosedAt)),
-	sqlbuilder.NewColumn("Fexpired_at", sqlbuilder.GetField(NewExpiredAt)),
 ).AddIndexs(
 	sqlbuilder.Index{
 		IsPrimary: true,
@@ -67,52 +67,95 @@ type PayOrderModel struct {
 	CreatedAt   string `gorm:"column:Fcreated_at" json:"createdAt"`
 	PaidAt      string `gorm:"column:Fpaid_at" json:"paidAt"`
 	ClosedAt    string `gorm:"column:Fclosed_at" json:"closedAt"`
-	ExpiredAt   string `gorm:"column:Fexpired_at" json:"expiredAt"`
 }
 
-type PayOrderModels []PayRecordModel
+type PayOrderModels []PayOrderModel
 
 type PayOrderRepository struct {
-	repository sqlbuilder.Repository[PayRecordModel]
+	stateMachine statemachine.StateMachine
+	repository   sqlbuilder.Repository[PayOrderModel]
 }
 
-func NewPayOrderRepository(handler sqlbuilder.Handler) PayOrderRepository {
+func NewPayOrderRepository(handler sqlbuilder.Handler) (repository PayOrderRepository) {
 	tableConfig := table_pay_order.WithHandler(handler)
-	return PayOrderRepository{
-		repository: sqlbuilder.NewRepository[PayRecordModel](tableConfig),
+	stateMachine := repository.makeStateMachine(tableConfig)
+	repository = PayOrderRepository{
+		stateMachine: *stateMachine,
+		repository:   sqlbuilder.NewRepository[PayOrderModel](tableConfig),
 	}
+	return repository
 }
 
-type PayOrderCreateIn struct {
+func (repo PayOrderRepository) GetStateMachine() statemachine.StateMachine {
+	return repo.stateMachine
+}
+
+func (repo PayOrderRepository) makeStateMachine(tableConfig sqlbuilder.TableConfig) (stateMachine *statemachine.StateMachine) {
+	fieldNameOrderId := sqlbuilder.GetFieldName(NewOrderId)
+	colIdentity := tableConfig.Columns.GetByFieldNameMust(fieldNameOrderId)
+	fieldNameState := sqlbuilder.GetFieldName(NewState)
+	colState := tableConfig.Columns.GetByFieldNameMust(fieldNameState)
+	stateRepository := statemachine.NewStateRepository(
+		tableConfig,
+		statemachine.StateModelDbColumnRefer{
+			Identity: colIdentity.DbName,
+			State:    colState.DbName,
+		},
+	)
+	stateMachine = newPayOrderStateMachine(stateRepository)
+	return stateMachine
+}
+
+func newPayOrderStateMachine(stateRepository statemachine.StateRepository) *statemachine.StateMachine {
+	var actions = statemachine.Actions{
+		{
+			ActionName: Action_pay_order_Pay,
+			SrcStates: []string{
+				PayOrderModel_state_pending.String(),
+				PayOrderModel_state_paid.String(), // 支持幂等
+			},
+			DstState: PayOrderModel_state_paid.String(),
+		},
+		{
+			ActionName: Action_pay_order_Close,
+			SrcStates: []string{
+				PayOrderModel_state_pending.String(),
+				PayOrderModel_state_closed.String(), // 支持幂等
+			},
+			DstState: PayOrderModel_state_closed.String(),
+		},
+	}
+	stateMachine := statemachine.NewStateMachine(actions, stateRepository)
+	return stateMachine
+}
+
+const (
+	Action_pay_order_Pay   = "actionPay"
+	Action_pay_order_Close = "actionClose"
+)
+
+type PayOrderSetIn struct {
 	OrderId     string `json:"orderId"`
 	OrderAmount int    `json:"orderAmount"`
 	UserId      string `json:"userId"`
 	Remark      string `json:"remark"`
-	Expire      int    `json:"expire"`
 }
 
-func (in PayOrderCreateIn) Fields() sqlbuilder.Fields {
+func (in PayOrderSetIn) Fields() sqlbuilder.Fields {
 	return sqlbuilder.Fields{
-		NewOrderId(in.OrderId),
-		NewOrderAmount(in.OrderAmount),
+		NewOrderId(in.OrderId).SetRequired(true).AppendWhereFn(sqlbuilder.ValueFnForward),
+		NewOrderAmount(in.OrderAmount).SetRequired(true).SetMinimum(1),
 		NewUserId(in.UserId),
 		NewRemark(in.Remark),
-		NewExpire(in.Expire),
 		NewCreatedAt(time.Now().Format(time.DateTime)),
 		NewState(PayOrderModel_state_pending.String()),
 	}
 }
 
-func (repo PayOrderRepository) Create(in PayOrderCreateIn) (err error) {
-	err = repo.repository.Insert(in.Fields(), nil)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (repo PayOrderRepository) Expire(orderId string) (err error) {
-	err = repo.repository.Insert(in.Fields(), nil)
+func (repo PayOrderRepository) Set(in PayOrderSetIn) (err error) {
+	_, _, _, err = repo.repository.Set(in.Fields(), func(p *sqlbuilder.SetParam) {
+		p.WithPolicy(sqlbuilder.SetPolicy_only_Insert)
+	})
 	if err != nil {
 		return err
 	}

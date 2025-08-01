@@ -3,12 +3,12 @@ module github.com/suifengpiao14/paymentrecord
 go 1.22
 
 require (
-	github.com/looplab/fsm v1.0.3
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cast v1.6.0
 	github.com/stretchr/testify v1.10.0
 	github.com/suifengpiao14/commonlanguage v0.0.17
 	github.com/suifengpiao14/sqlbuilder v0.1.572
+	gitlab.huishoubao.com/gopackage/statemachine v0.0.0-20250731101948-83ea3d886f30
 )
 
 require (
@@ -20,6 +20,7 @@ require (
 	github.com/go-sql-driver/mysql v1.7.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/looplab/fsm v1.0.3 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
