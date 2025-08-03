@@ -29,6 +29,7 @@ func NewPayRecordService(handler sqlbuilder.Handler) (payRecordService *PayRecor
 
 type PayRecordCreateIn struct {
 	PayId            string `json:"payId"`
+	Expire           int    `json:"expire"` // 过期时间，单位分钟
 	OrderId          string `json:"orderId"`
 	PayAgent         string `json:"payAgent"`   // 支付机构 weixin:微信 alipay:支付宝
 	OrderAmount      int    `json:"orderPrice"` // 订单金额，单位分
@@ -71,6 +72,7 @@ func (s PayRecordService) Create(ins ...PayRecordCreateIn) (err error) {
 			OrderAmount: inFirst.OrderAmount,
 			UserId:      inFirst.UserId,
 			Remark:      inFirst.Remark,
+			Expire:      inFirst.Expire,
 		}
 		err = orderRepository.Set(payOrderSetIn)
 		if err != nil {
@@ -113,6 +115,14 @@ func (s PayRecordService) Create(ins ...PayRecordCreateIn) (err error) {
 	}
 
 	return nil
+}
+
+func (s PayRecordService) GetAllPayRecordByConditon(whereFs sqlbuilder.Fields) (payRecords repository.PayRecordModels, err error) {
+	return s.recordRepository.GetAllPayRecordByConditon(whereFs)
+}
+
+func (s PayRecordService) GetFirstPayRecordByConditon(whereFs sqlbuilder.Fields) (payRecord repository.PayRecordModel, err error) {
+	return s.recordRepository.GetFirstPayRecordByConditon(whereFs)
 }
 func (s PayRecordService) validate(ins PayRecordCreateIn) (err error) {
 	payRecords, err := s.recordRepository.GetByOrderId(ins.OrderId)
@@ -158,7 +168,7 @@ func (req *PayRecordCreateIn) validate() error {
 	if req.PayId == "" {
 		return errors.New("payId不能为空")
 	}
-	payAgents := []string{repository.PayingAgent_Alipay, repository.PayingAgent_Wechat}
+	payAgents := []string{repository.PayingAgent_Alipay, repository.PayingAgent_Wechat, repository.PayingAgent_Coupon}
 	// 验证type
 	if !slices.Contains(payAgents, req.PayAgent) {
 		err := errors.Errorf("请传入支付方式=>%s", strings.Join(payAgents, ","))

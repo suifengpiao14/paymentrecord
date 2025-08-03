@@ -49,6 +49,7 @@ func NewPayAmount(payAmount int) *sqlbuilder.Field {
 const (
 	PayingAgent_Wechat = "weixin"
 	PayingAgent_Alipay = "alipay"
+	PayingAgent_Coupon = "coupon"
 )
 
 func NewPayAgent(payAgent string) *sqlbuilder.Field {

@@ -197,6 +197,20 @@ func NewPayRecordRepository(handler sqlbuilder.Handler) (repository PayRecordRep
 func (repo PayRecordRepository) GetStateMachine() statemachine.StateMachine {
 	return repo.stateMachine
 }
+func (repo PayRecordRepository) GetAllPayRecordByConditon(whereFs sqlbuilder.Fields) (payRecordModels PayRecordModels, err error) {
+	if len(whereFs) == 0 {
+		err = errors.New("whereFs 不能为空")
+		return nil, err
+	}
+	return repo.repository.All(whereFs)
+}
+func (repo PayRecordRepository) GetFirstPayRecordByConditon(whereFs sqlbuilder.Fields) (payRecordModel PayRecordModel, err error) {
+	if len(whereFs) == 0 {
+		err = errors.New("whereFs 不能为空")
+		return payRecordModel, err
+	}
+	return repo.repository.FirstMustExists(whereFs)
+}
 
 func (payRecordRepository PayRecordRepository) makeStateMachine(tableConfig sqlbuilder.TableConfig) (stateMachine *statemachine.StateMachine) {
 	fieldNamePayId := sqlbuilder.GetFieldName(NewPayId)
@@ -215,9 +229,9 @@ func (payRecordRepository PayRecordRepository) makeStateMachine(tableConfig sqlb
 }
 
 func newPayRecordStateMachine(stateRepository statemachine.StateRepository) *statemachine.StateMachine {
-	var actions = statemachine.Actions{
+	var actions = statemachine.TransformEvents{
 		{
-			ActionName: Action_pay_record_Pay,
+			EventName: Action_pay_record_Pay,
 			SrcStates: []string{
 				PayOrderModel_state_pending.String(),
 				PayOrderModel_state_failed.String(), // 支付失败可以继续支付（比如钱包金额不够、选中的优惠券过期等，充值后再支付，增加支付失败状态可以记录原因）
@@ -226,7 +240,7 @@ func newPayRecordStateMachine(stateRepository statemachine.StateRepository) *sta
 			DstState: PayOrderModel_state_paid.String(),
 		},
 		{
-			ActionName: Action_pay_record_Expire, // 过期时需要先同步查询，看是否已经支付（比如消息异常导致未同步到数据）
+			EventName: Action_pay_record_Expire, // 过期时需要先同步查询，看是否已经支付（比如消息异常导致未同步到数据）
 
 			SrcStates: []string{
 				PayOrderModel_state_pending.String(),
@@ -235,7 +249,7 @@ func newPayRecordStateMachine(stateRepository statemachine.StateRepository) *sta
 			DstState: PayOrderModel_state_expired.String(),
 		},
 		{
-			ActionName: Action_pay_record_Fail,
+			EventName: Action_pay_record_Fail,
 			SrcStates: []string{
 				PayOrderModel_state_pending.String(),
 				PayOrderModel_state_failed.String(), // 支持幂等
@@ -243,7 +257,7 @@ func newPayRecordStateMachine(stateRepository statemachine.StateRepository) *sta
 			DstState: PayOrderModel_state_failed.String(),
 		},
 		{
-			ActionName: Action_pay_record_Close,
+			EventName: Action_pay_record_Close,
 			SrcStates: []string{
 				PayOrderModel_state_pending.String(),
 				PayOrderModel_state_closed.String(), // 支持幂等

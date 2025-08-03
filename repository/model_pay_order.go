@@ -112,9 +112,9 @@ func (repo PayOrderRepository) makeStateMachine(tableConfig sqlbuilder.TableConf
 }
 
 func newPayOrderStateMachine(stateRepository statemachine.StateRepository) *statemachine.StateMachine {
-	var actions = statemachine.Actions{
+	var actions = statemachine.TransformEvents{
 		{
-			ActionName: Action_pay_order_Pay,
+			EventName: Action_pay_order_Pay,
 			SrcStates: []string{
 				PayOrderModel_state_pending.String(),
 				PayOrderModel_state_paid.String(), // 支持幂等
@@ -122,7 +122,7 @@ func newPayOrderStateMachine(stateRepository statemachine.StateRepository) *stat
 			DstState: PayOrderModel_state_paid.String(),
 		},
 		{
-			ActionName: Action_pay_order_Close,
+			EventName: Action_pay_order_Close,
 			SrcStates: []string{
 				PayOrderModel_state_pending.String(),
 				PayOrderModel_state_closed.String(), // 支持幂等
@@ -144,6 +144,7 @@ type PayOrderSetIn struct {
 	OrderAmount int               `json:"orderAmount"`
 	UserId      string            `json:"userId"`
 	Remark      string            `json:"remark"`
+	Expire      int               `json:"expire"`
 	ExtraFields sqlbuilder.Fields `json:"extraFields"`
 }
 
@@ -155,6 +156,7 @@ func (in PayOrderSetIn) Fields() sqlbuilder.Fields {
 		NewRemark(in.Remark),
 		NewCreatedAt(time.Now().Format(time.DateTime)),
 		NewState(PayOrderModel_state_pending.String()),
+		NewExpire(in.Expire),
 	}
 	fs = fs.Add(in.ExtraFields...)
 	return fs
