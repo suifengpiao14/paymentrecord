@@ -79,8 +79,8 @@ github.com/suifengpiao14/commonlanguage v0.0.17 h1:IGgWcu/2VpmIfMXWZ/hjmw0C00A7g
 github.com/suifengpiao14/commonlanguage v0.0.17/go.mod h1:je+TL/Q0v9oeZDRGdb687iCTrKXaLMiApzHFzsMyOsA=
 github.com/suifengpiao14/funcs v0.0.25 h1:6WIUtCdNJbAv2MAvTx7v+q4xvaeQH1HpnTykkMEwJ9U=
 github.com/suifengpiao14/funcs v0.0.25/go.mod h1:g95inzlUrS2Vtyvv5SjVFOnOeX7ZBPWwyKuEMMW+g7U=
-github.com/suifengpiao14/sqlbuilder v0.1.65 h1:mjYgvZtYcpU2LjRBUEyWibtdgHGsGlTonad/Uzq2ee4=
-github.com/suifengpiao14/sqlbuilder v0.1.65/go.mod h1:dNKvJcN+3swydJHz0z2nP+9wlsT8sIAEhCWZSo8jLNI=
+github.com/suifengpiao14/sqlbuilder v0.2.0 h1:QItuLJUruUi+uUfLp65Z+kTa7GzjhENUzx8w8pWrEzw=
+github.com/suifengpiao14/sqlbuilder v0.2.0/go.mod h1:dNKvJcN+3swydJHz0z2nP+9wlsT8sIAEhCWZSo8jLNI=
 github.com/suifengpiao14/sshmysql v0.0.6 h1:y/evOXJhTZRDFRGXPLzkRzwRZ+pWIuakWr5BX3h51/c=
 github.com/suifengpiao14/sshmysql v0.0.6/go.mod h1:YvD7LCCDjrK/zr1YkiCGZK5ETDevY9NKsQkJ2XDRb5Y=
 gitlab.huishoubao.com/gopackage/statemachine v0.0.0-20250731101948-83ea3d886f30 h1:gc0ESagD59FxJiWwsefYc/KkGmsk1E8GYN+/ttS9rHk=
