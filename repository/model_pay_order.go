@@ -68,7 +68,7 @@ type PayOrderModels []PayOrderModel
 
 type PayOrderRepository struct {
 	stateMachine statemachine.StateMachine
-	repository   sqlbuilder.Repository[PayOrderModel]
+	repository   sqlbuilder.Repository
 }
 
 func NewPayOrderRepository(handler sqlbuilder.Handler) (repository PayOrderRepository) {
@@ -76,7 +76,7 @@ func NewPayOrderRepository(handler sqlbuilder.Handler) (repository PayOrderRepos
 	stateMachine := repository.makeStateMachine(tableConfig)
 	repository = PayOrderRepository{
 		stateMachine: *stateMachine,
-		repository:   sqlbuilder.NewRepository[PayOrderModel](tableConfig),
+		repository:   sqlbuilder.NewRepository(tableConfig),
 	}
 	return repository
 }
