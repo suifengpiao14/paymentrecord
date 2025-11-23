@@ -11,13 +11,13 @@ import (
 )
 
 // userName string, password string, host string, port int, database string
-var mysqlDB = sqlbuilder.GormDBMakeMysql(sqlbuilder.DBConfig{
+var mysqlDB = sqlbuilder.DB2Gorm(sqlbuilder.MakeDBHandler(sqlbuilder.DBConfig{
 	UserName:     "root",
 	Password:     "123456",
 	Host:         "10.0.11.125",
 	Port:         3306,
 	DatabaseName: "test",
-}, nil)
+}), nil)
 
 var handler = sqlbuilder.NewGormHandler(mysqlDB)
 var payOrderService = paymentrecord.NewPayRecordService(handler)

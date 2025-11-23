@@ -38,15 +38,15 @@ var table_pay_order = sqlbuilder.NewTableConfig("pay_order").AddColumns(
 ).AddIndexs(
 	sqlbuilder.Index{
 		IsPrimary: true,
-		ColumnNames: func(tableColumns sqlbuilder.ColumnConfigs) (columnNames []string) {
+		ColumnNames: func(table sqlbuilder.TableConfig) (columnNames []string) {
 
-			return []string{tableColumns.GetByFieldNameMust(sqlbuilder.GetFieldName(NewId)).DbName}
+			return []string{table.GetDBNameByFieldNameMust(sqlbuilder.GetFieldName(NewId))}
 		},
 	},
 	sqlbuilder.Index{
 		Unique: true,
-		ColumnNames: func(tableColumns sqlbuilder.ColumnConfigs) (columnNames []string) {
-			return []string{tableColumns.GetByFieldNameMust(sqlbuilder.GetFieldName(NewOrderId)).DbName}
+		ColumnNames: func(table sqlbuilder.TableConfig) (columnNames []string) {
+			return []string{table.GetDBNameByFieldNameMust(sqlbuilder.GetFieldName(NewOrderId))}
 		},
 	},
 ).WithComment("收款单表")
@@ -68,7 +68,7 @@ type PayOrderModels []PayOrderModel
 
 type PayOrderRepository struct {
 	stateMachine statemachine.StateMachine
-	repository   sqlbuilder.Repository[PayOrderModel]
+	repository   sqlbuilder.Repository
 }
 
 func NewPayOrderRepository(handler sqlbuilder.Handler) (repository PayOrderRepository) {
@@ -76,7 +76,7 @@ func NewPayOrderRepository(handler sqlbuilder.Handler) (repository PayOrderRepos
 	stateMachine := repository.makeStateMachine(tableConfig)
 	repository = PayOrderRepository{
 		stateMachine: *stateMachine,
-		repository:   sqlbuilder.NewRepository[PayOrderModel](tableConfig),
+		repository:   sqlbuilder.NewRepository(tableConfig),
 	}
 	return repository
 }

@@ -161,27 +161,27 @@ var table_pay_record = sqlbuilder.NewTableConfig("pay_record").AddColumns(
 ).AddIndexs(
 	sqlbuilder.Index{
 		IsPrimary: true,
-		ColumnNames: func(tableColumns sqlbuilder.ColumnConfigs) (columnNames []string) {
+		ColumnNames: func(table sqlbuilder.TableConfig) (columnNames []string) {
 
-			return []string{tableColumns.GetByFieldNameMust(sqlbuilder.GetFieldName(NewId)).DbName}
+			return []string{table.GetDBNameByFieldNameMust(sqlbuilder.GetFieldName(NewId))}
 		},
 	},
 	sqlbuilder.Index{
 		Unique: true,
-		ColumnNames: func(tableColumns sqlbuilder.ColumnConfigs) (columnNames []string) {
-			return []string{tableColumns.GetByFieldNameMust(sqlbuilder.GetFieldName(NewPayId)).DbName}
+		ColumnNames: func(table sqlbuilder.TableConfig) (columnNames []string) {
+			return []string{table.GetDBNameByFieldNameMust(sqlbuilder.GetFieldName(NewPayId))}
 		},
 	},
 	sqlbuilder.Index{
-		ColumnNames: func(tableColumns sqlbuilder.ColumnConfigs) (columnNames []string) {
-			return []string{tableColumns.GetByFieldNameMust(sqlbuilder.GetFieldName(NewOrderId)).DbName}
+		ColumnNames: func(table sqlbuilder.TableConfig) (columnNames []string) {
+			return []string{table.GetDBNameByFieldNameMust(sqlbuilder.GetFieldName(NewOrderId))}
 		},
 	},
 ).WithComment("收款记录表")
 
 type PayRecordRepository struct {
 	stateMachine statemachine.StateMachine
-	repository   sqlbuilder.Repository[PayRecordModel]
+	repository   sqlbuilder.Repository
 }
 
 func NewPayRecordRepository(handler sqlbuilder.Handler) (repository PayRecordRepository) {
@@ -189,7 +189,7 @@ func NewPayRecordRepository(handler sqlbuilder.Handler) (repository PayRecordRep
 	stateMachine := repository.makeStateMachine(tableConfig)
 	repository = PayRecordRepository{
 		stateMachine: *stateMachine,
-		repository:   sqlbuilder.NewRepository[PayRecordModel](tableConfig),
+		repository:   sqlbuilder.NewRepository(tableConfig),
 	}
 	return repository
 }
@@ -202,14 +202,19 @@ func (repo PayRecordRepository) GetAllPayRecordByConditon(whereFs sqlbuilder.Fie
 		err = errors.New("whereFs 不能为空")
 		return nil, err
 	}
-	return repo.repository.All(whereFs)
+	err = repo.repository.All(&payRecordModels, whereFs)
+	if err != nil {
+		return nil, err
+	}
+	return
 }
 func (repo PayRecordRepository) GetFirstPayRecordByConditon(whereFs sqlbuilder.Fields) (payRecordModel PayRecordModel, err error) {
 	if len(whereFs) == 0 {
 		err = errors.New("whereFs 不能为空")
 		return payRecordModel, err
 	}
-	return repo.repository.FirstMustExists(whereFs)
+	err = repo.repository.FirstMustExists(&payRecordModel, whereFs)
+	return
 }
 
 func (payRecordRepository PayRecordRepository) makeStateMachine(tableConfig sqlbuilder.TableConfig) (stateMachine *statemachine.StateMachine) {
@@ -341,7 +346,7 @@ func (repo PayRecordRepository) GetByPayId(payId string) (model PayRecordModel, 
 	fs := sqlbuilder.Fields{
 		NewPayId(payId).AppendWhereFn(sqlbuilder.ValueFnForward),
 	}
-	model, exists, err = repo.repository.First(fs)
+	exists, err = repo.repository.First(&model, fs)
 	if err != nil {
 		return model, exists, err
 	}
@@ -364,7 +369,7 @@ func (repo PayRecordRepository) GetByOrderId(orderId string) (models PayRecordMo
 	fs := sqlbuilder.Fields{
 		NewOrderId(orderId).AppendWhereFn(sqlbuilder.ValueFnForward),
 	}
-	models, err = repo.repository.All(fs)
+	err = repo.repository.All(&models, fs)
 	if err != nil {
 		return models, err
 	}
