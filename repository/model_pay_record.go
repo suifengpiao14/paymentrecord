@@ -206,7 +206,8 @@ func (repo PayRecordRepository) GetAllPayRecordByConditon(whereFs sqlbuilder.Fie
 	if err != nil {
 		return nil, err
 	}
-	return
+	return payRecordModels, nil
+
 }
 func (repo PayRecordRepository) GetFirstPayRecordByConditon(whereFs sqlbuilder.Fields) (payRecordModel PayRecordModel, err error) {
 	if len(whereFs) == 0 {
@@ -214,7 +215,10 @@ func (repo PayRecordRepository) GetFirstPayRecordByConditon(whereFs sqlbuilder.F
 		return payRecordModel, err
 	}
 	err = repo.repository.FirstMustExists(&payRecordModel, whereFs)
-	return
+	if err != nil {
+		return payRecordModel, err
+	}
+	return payRecordModel, nil
 }
 
 func (payRecordRepository PayRecordRepository) makeStateMachine(tableConfig sqlbuilder.TableConfig) (stateMachine *statemachine.StateMachine) {
